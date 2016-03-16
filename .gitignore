@@ -1,0 +1,8 @@
+*.pyc
+.idea
+.cache
+.venv
+examples
+.tox
+*.egg-info
+.coverage

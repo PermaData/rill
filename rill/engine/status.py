@@ -1,0 +1,11 @@
+# FIXME: use enum34?
+class StatusValues(object):
+    NOT_STARTED = 'NOT_STARTED'
+    ACTIVE = 'ACTIVE'
+    DORMANT = 'DORMANT'
+    SUSP_RECV = 'SUSP_RECV'
+    SUSP_SEND = 'SUSP_SEND'
+    TERMINATED = 'TERMINATED'
+    LONG_WAIT = 'LONG_WAIT'
+    SUSP_FIPE = 'SUSP_FIPE'
+    ERROR = 'ERROR'
