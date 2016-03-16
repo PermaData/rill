@@ -8,13 +8,13 @@ from rill.engine.inputport import InputPort, InputArray
 from tests.components import *
 from tests.subnets import PassthruNet
 
-from rill.components.basic import Counter, Passthru, Sort, Inject, Repeat, Cap
+from rill.components.basic import Counter, Sort, Inject, Repeat, Cap
 from rill.components.filters import First
 from rill.components.merge import Group
 from rill.components.split import RoundRobinSplit, Replicate
 from rill.components.math import Add
 from rill.components.files import ReadLines, WriteLines, Write
-from rill.components.text import Prefix
+from rill.components.text import Prefix, LineToWords, LowerCase, StartsWith, WordsToLine
 
 from rill.engine.component import Component
 from rill.engine.decorators import inport, outport, component
@@ -40,12 +40,23 @@ def names(ports):
     return [x.name for x in ports.ports()]
 
 
+@component(pass_context=True)
+@inport("IN")
+@outport("OUT")
+def Passthru(self, IN, OUT):
+    """Pass a stream of packets to an output stream"""
+    self.values = []
+    for p in IN.iter_packets():
+        self.values.append(p.get_contents())
+        OUT.send(p)
+
+
 @inport("IN", description="Stream of packets to be discarded")
 class Discard(Component):
     def execute(self):
         p = self.inports.IN.receive()
         self.packets.append(p)
-        self.values.append(p.get_content())
+        self.values.append(p.get_contents())
         self.drop(p)
 
     def init(self):
@@ -59,7 +70,7 @@ class DiscardLooper(Component):
     def execute(self):
         for p in self.inports.IN:
             self.packets.append(p)
-            self.values.append(p.get_content())
+            self.values.append(p.get_contents())
             self.drop(p)
 
     def init(self):
@@ -536,6 +547,7 @@ def test_fib(net):
     net.add_component("Repeat2", Repeat, COUNT=2)
     # set a max value to the sequence
     net.add_component("Cap", Cap, MAX=30)
+    pthru = net.add_component("Passthru", Passthru)
 
     # need to use inject because you can't mix static value and connection
     net.connect("Zero.OUT", "Add.IN1")
@@ -548,9 +560,38 @@ def test_fib(net):
 
     net.connect("Repeat2.OUT", "Add.IN2")
     net.connect("Add.OUT", "Cap.IN")
+    net.connect("Cap.OUT", "Passthru.IN")
     # complete the loop:
-    net.connect("Cap.OUT", "Split.IN")
+    net.connect("Passthru.OUT", "Split.IN")
     net.go()
+    # FIXME: where's the 0?
+    assert pthru.values == [1, 2, 3, 5, 8, 13, 21]
+
+
+def test_readme_example(net, discard):
+    net.add_component("LineToWords", LineToWords, IN="HeLLo GoodbYe WOrld")
+    net.add_component("StartsWith", StartsWith, TEST='G')
+    net.add_component("LowerCase", LowerCase)
+    net.add_component("WordsToLine", WordsToLine)
+    dis = net.add_component("Discard", discard)
+
+    net.connect("LineToWords.OUT", "StartsWith.IN")
+    net.connect("StartsWith.REJ", "LowerCase.IN")
+    net.connect("LowerCase.OUT", "WordsToLine.IN")
+    net.connect("WordsToLine.OUT", "Discard.IN")
+    net.go()
+    assert dis.values == ['hello world']
+
+
+def test_first(net, discard):
+    net.add_component("Generate", GenerateTestData, COUNT=4)
+    net.add_component("First", First)
+    dis = net.add_component("Discard", discard)
+
+    net.connect("Generate.OUT", "First.IN")
+    net.connect("First.OUT", "Discard.IN")
+    net.go()
+    assert dis.values == ['000004']
 
 # def test_self_starting():
 #     # creates a cycle

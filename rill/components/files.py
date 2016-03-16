@@ -26,7 +26,7 @@ def WriteLines(IN, FILEPATH, OUT):
                 # long_wait_start(_timeout)
 
                 try:
-                    f.write(p.get_content() + '\n')
+                    f.write(p.get_contents() + '\n')
                 except IOError as e:
                     logger.error("Failed reading file {}: {}".format(
                         filename, str(e)))
@@ -55,7 +55,7 @@ def Write(IN, FILEPATH, OUT):
     # p = FILEPATH.receive()
     # if p is None:
     #     return
-    # filename = p.get_content()
+    # filename = p.get_contents()
     #
     # p = IN.receive()
     # if p is None:
@@ -64,19 +64,19 @@ def Write(IN, FILEPATH, OUT):
     # logger.info("Writing file {}".format(filename))
     # try:
     #     with open(filename, 'w') as f:
-    #         f.write(p.get_content())
+    #         f.write(p.get_contents())
     # except IOError as e:
     #     logger.error("Failed writing file {}: {}".format(
     #         filename, str(e)))
     # OUT.send(p)
 
     for pfile, ptext in synced(FILEPATH, IN):
-        filename = pfile.get_content()
+        filename = pfile.get_contents()
         pfile.drop()
         logger.info("Writing file {}".format(filename))
         try:
             with open(filename, 'w') as f:
-                f.write(ptext.get_content())
+                f.write(ptext.get_contents())
         except IOError as e:
             logger.error("Failed writing file {}: {}".format(
                 filename, str(e)))
@@ -94,7 +94,7 @@ def ReadLines(FILEPATH, OUT):
     # if filename is None:
     #     return
     #
-    for filename in FILEPATH.iter_content():
+    for filename in FILEPATH.iter_contents():
 
         logger.info("Reading file {}".format(filename))
         try:

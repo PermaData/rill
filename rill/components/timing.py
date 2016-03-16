@@ -57,5 +57,5 @@ def Gate(IN, TRIGGER, OUT):
     # IN.close()
 
     # pass output
-    OUT.send(rp.get_content())
+    OUT.send(rp.get_contents())
     rp.drop()

@@ -282,7 +282,7 @@ class SubOI(Component):
         if np is None:
             return
         self.nameport.close()
-        pname = np.get_content()
+        pname = np.get_contents()
         self.drop(np)
 
         i = pname.index_of(":")

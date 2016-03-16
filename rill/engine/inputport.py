@@ -55,7 +55,7 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
         """
         # p = self.receive()
         # if p is not None:
-        #     value = p.get_content()
+        #     value = p.get_contents()
         #     self.receiver.drop(p)
         # else:
         #     value = default
@@ -63,7 +63,7 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
         # return value
 
         try:
-            return next(self.iter_content())
+            return next(self.iter_contents())
         except StopIteration:
             return default
         finally:
@@ -85,7 +85,7 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
 
     __iter__ = iter_packets
 
-    def iter_content(self):
+    def iter_contents(self):
         """
         Iterate over the content of received packets.
 
@@ -96,7 +96,7 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
         object
         """
         for p in self.iter_packets():
-            content = p.get_content()
+            content = p.get_contents()
             self.receiver.drop(p)
             yield content
 
@@ -161,7 +161,7 @@ class InputPort(Port, InputInterface):
         if self.is_connected():
             p = self._connection.receive()
             if p is not None:
-                self.validate_packet_contents(p.get_content())
+                self.validate_packet_contents(p.get_contents())
                 return p
 
     def initialize(self, static_value):
@@ -480,7 +480,7 @@ class Connection(ConnectionInterface):
 
         packet.set_owner(self.receiver)
 
-        if packet.get_content() is None:
+        if packet.get_contents() is None:
             self.receiver.logger.debug("Received None packet",
                                        port=self.inport)
         else:
@@ -731,7 +731,7 @@ class SynchronizedInputCollection(BaseInputCollection, InputInterface):
             port.open()
         return tuple(result)
 
-    def iter_content(self):
+    def iter_contents(self):
         """
         Iterate over the content of received packets.
 

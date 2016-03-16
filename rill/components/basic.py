@@ -18,7 +18,7 @@ def Output(IN, OUT):
             logger.info("CLOSE({})".format(level))
             break
         else:
-            logger.info(repr(p.get_content()))
+            logger.info(repr(p.get_contents()))
         OUT.send(p)
 
 
@@ -149,7 +149,7 @@ def Sort(IN, MAX, OUT):
 
         for i in range(k):
             if array[i] is not None:
-                s = array[i].get_content()
+                s = array[i].get_contents()
                 if curr_min is None or s < curr_min:  # was `cmp(s, t) < 0`
                     j = i
                     curr_min = s
@@ -171,7 +171,7 @@ def Cap(IN, MAX, OUT):
     """
     max = MAX.receive_once()
     for p in IN.iter_packets():
-        if p.get_content() >= max:
+        if p.get_contents() >= max:
             p.drop()
             IN.close()
             break

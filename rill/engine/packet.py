@@ -61,7 +61,7 @@ class Packet(object):
         """
         return self.chains.keys()
 
-    def get_content(self):
+    def get_contents(self):
         """Get packet's contents
         """
         # if (self._type == NORMAL)
@@ -74,7 +74,7 @@ class Packet(object):
 
         Convenience method for a common pattern.
         """
-        content = self.get_content()
+        content = self.get_contents()
         self.drop()
         return content
 
@@ -155,7 +155,7 @@ class Packet(object):
             self.CLOSE: "CLOSE"
         }
         if self.get_type() == self.NORMAL:
-            obj = self.get_content()
+            obj = self.get_contents()
             if obj is not None:
                 value = repr(obj)
         else:

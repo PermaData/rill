@@ -107,7 +107,7 @@ class OutputPort(Port, OutputInterface):
             self.sender.drop(packet)
             return False
 
-        self.validate_packet_contents(packet.get_content())
+        self.validate_packet_contents(packet.get_contents())
         self.sender.logger.debug("Sending packet: {}".format(packet),
                                  port=self)
         if not self._connection.send(packet, self):

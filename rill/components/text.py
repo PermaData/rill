@@ -1,21 +1,18 @@
 from rill.engine.component import *
 
-"""
- * Affix each packet IN with the given Strings PRE before and POST after, and copy it to OUT.
- *
-"""
-
 
 @component
-@outport("OUT")
-@inport("IN")
-@inport("PRE")
+@outport("OUT", type=str)
+@inport("IN", type=str)
+@inport("PRE", type=str, optional=False)
 def Prefix(IN, PRE, OUT):
-    """Prefix each packet IN with the given PRE and copy it to OUT"""
-    prefix = PRE.receive_once("")
+    """
+    Prefix each packet IN with the given PRE and copy it to OUT
+    """
+    prefix = PRE.receive_once()
 
     for p in IN:
-        text = prefix + p.get_content()
+        text = prefix + p.get_contents()
         p.drop()
         OUT.send(text)
 
@@ -23,75 +20,35 @@ def Prefix(IN, PRE, OUT):
 @component
 @outport("OUT", type=str)
 @inport("IN", type=str)
-@inport("PRE", type=str)
-@inport("POST", type=str)
+@inport("PRE", type=str, optional=False)
+@inport("POST", type=str, optional=False)
 def Affix(IN, PRE, POST, OUT):
-    """For each packet IN add the Strings PRE as a prefix and POST as a suffix,
-    and copy to OUT"""
-    spre = PRE.receive_once(default="")
-    spost = POST.receive_once(default="")
-
-    for pin in IN:
-        sout = spre + pin.get_content() + spost
-        pin.drop()
-        OUT.send(sout)
-
-
-def Affix2(IN, PRE, POST, OUT):
-    spre = PRE.receive_once(default="")
-    spost = POST.receive_once(default="")
-
-    for pin in IN:
-        sout = spre + pin.consume() + spost
-        OUT.send(sout)
-
-
-def Affix3(IN, PRE, POST, OUT):
-    spre = PRE.receive_once(default="")
-    spost = POST.receive_once(default="")
-
-    for s in consume(IN):
-        sout = spre + s + spost
-        OUT.send(sout)
-
-
-def Affix4(IN, PRE, POST, OUT):
-    spre = PRE.receive_once(default="")
-    spost = POST.receive_once(default="")
+    """
+    For each packet IN add the Strings PRE as a prefix and POST as a suffix,
+    and copy to OUT
+    """
+    spre = PRE.receive_once()
+    spost = POST.receive_once()
 
     for s in IN.iter_contents():
         sout = spre + s + spost
         OUT.send(sout)
 
+
 @component
 @outport("OUT", type=str)
 @inport("IN", type=str)
 def DedupeSuccessive(IN, OUT):
-    """Take text IN and only send OUT where self differs from the previous
-    text."""
+    """
+    Take text IN and only send OUT where it differs from the previous
+    text
+    """
     previous = ""
-    for pin in IN:
-        sin = pin.get_content()
-        pin.drop()
-        if not previous == sin:
-            OUT.send(sin)
-        previous = sin
+    for s in IN.iter_contents():
+        if not previous == s:
+            OUT.send(s)
+        previous = s
 
-
-@component
-@inport("IN", type=str)
-@outport("OUT", type=str)
-@outport("DUPLICATE", type=str)
-def DuplicateString(IN, OUT, DUPLICATE):
-    """Copy all incoming packets to outputs OUT and DUPLICATE"""
-    for p in IN:
-        s = p.get_content()
-        OUT.send(p)
-        DUPLICATE.send(str(s))
-
-
-"""Provide maximum field lengths from a stream of character-separated records
-"""
 
 
 # @component
@@ -109,7 +66,7 @@ def DuplicateString(IN, OUT, DUPLICATE):
 #     psep = sepport.receive()
 #     if (psep is not None):
 #         sepport.close()
-#         sep = psep.get_content()
+#         sep = psep.get_contents()
 #         self.drop(psep)
 #
 #     # Pass through IN to OUT, keeping greatest field lengths
@@ -117,7 +74,7 @@ def DuplicateString(IN, OUT, DUPLICATE):
 #     nlimits = None
 #     p
 #     for p in IN:
-#         o = p.get_content()
+#         o = p.get_contents()
 #
 #         # Get fields for self record
 #         fields = o.split(sep)
@@ -148,10 +105,8 @@ def DuplicateString(IN, OUT, DUPLICATE):
 def LineToWords(IN, OUT):
     """Take space-separated words in a record IN and deliver individual words
     OUT"""
-    for pin in IN:
-        w = pin.get_content()
-        pin.drop()
-        words = w.split(" ")
+    for line in IN.iter_contents():
+        words = line.split(" ")
         for word in words:
             OUT.send(word)
 
@@ -161,10 +116,8 @@ def LineToWords(IN, OUT):
 @inport("IN", type=str)
 def LowerCase(IN, OUT):
     """Convert text IN to lower case and send OUT"""
-    for pin in IN:
-        sin = pin.get_content()
-        pin.drop()
-        lower = sin.tolower()
+    for s in IN.iter_contents():
+        lower = s.lower()
         OUT.send(lower)
 
 
@@ -180,20 +133,20 @@ def LowerCase(IN, OUT):
 #     obs = ' '  # Default obscure with space
 #     pobs = obsport.receive()
 #     if (pobs is not None):
-#         obs = (pobs.get_content()).char_at(0)
+#         obs = (pobs.get_contents()).char_at(0)
 #         self.drop(pobs)
 #     obsport.close()
 #
 #     exc = " "  # Default do not obscure spaces
 #     pexc = excport.receive()
 #     if (pexc is not None):
-#         exc = pexc.get_content()
+#         exc = pexc.get_contents()
 #         self.drop(pexc)
 #     excport.close()
 #
 #     for pin in IN:
 #         out = ""
-#         in = pin.get_content()
+#         in = pin.get_contents()
 #         if ( in is not None):
 #             in += exc  # add one EXC token as a marker
 #             e = in.index_of(exc)
@@ -244,7 +197,7 @@ def LowerCase(IN, OUT):
 #     psep = sepport.receive()
 #     if (psep is not None):
 #         sepport.close()
-#         sep = psep.get_content()
+#         sep = psep.get_contents()
 #         self.drop(psep)
 #
 #     # Default pad
@@ -254,7 +207,7 @@ def LowerCase(IN, OUT):
 #     ppad = padport.receive()
 #     if (ppad is not None):
 #         padport.close()
-#         pad = ppad.get_content()
+#         pad = ppad.get_contents()
 #         self.drop(ppad)
 #
 #     # get LIMITS
@@ -264,7 +217,7 @@ def LowerCase(IN, OUT):
 #     if (plimit is not None):
 #         limitport.close()
 #         String[]
-#         slimits = (plimit.get_content()).split(sep)
+#         slimits = (plimit.get_contents()).split(sep)
 #         nlimits = int[slimits.length]
 #         for (j = 0 j < nlimits.length j += 1):
 #             nlimits[j] = 0
@@ -276,7 +229,7 @@ def LowerCase(IN, OUT):
 #
 #     # Pass through IN to OUT, PADding fields to LIMITS
 #     for pin in IN:
-#         in = pin.get_content()
+#         in = pin.get_contents()
 #
 #         # Get fields for self record
 #         fields = in.split(sep)
@@ -301,104 +254,91 @@ def LowerCase(IN, OUT):
 @outport("OUT", type=str)
 @inport("IN", description="Strings to have replacement applied", type=str)
 @inport("REGEX", description="regular expression",
-        type=str)
-@inport("REPL", description="Replacement String", type=str)
+        type=str, optional=False)
+@inport("REPL", description="Replacement String", type=str, optional=False)
 def ReplaceRegExp(IN, REGEX, REPL, OUT):
-    """Replace all occurrences of FIND in each packet IN with the given
-    REPL and copy to OUT"""
-    find = re.compile(REGEX.receive_once(""))
-    repl = REPL.receive_once("")
+    """
+    Replace all occurrences of FIND in each packet IN with the given
+    REPL and copy to OUT
+    """
+    find = re.compile(REGEX.receive_once())
+    repl = REPL.receive_once()
 
-    for pin in IN:
-        text = pin.get_content()
-        pin.drop()
-        out = find.sub(text, repl)
+    for s in IN.iter_contents():
+        out = find.sub(s, repl)
         OUT.send(out)
-
-
-"""
- * Replace FIND in each packet IN with the given REPLacement and copy to OUT.
- *
-"""
 
 
 @component
 @outport("OUT")
 @inport("IN", description="Strings to be modified", type=str)
-@inport("FIND", description="Search target", type=str)
-@inport("REPL", description="Replacement text", type=str)
+@inport("FIND", description="Search target", type=str, optional=False)
+@inport("REPL", description="Replacement text", type=str, optional=False)
 def ReplaceString(IN, FIND, REPL, OUT):
-    """Replace all occurrences of text matching FIND (case-sensitive) in each
-    packet IN with the given REPL and send to OUT"""
-    find = FIND.receive_once("")
-    repl = REPL.receive("")
+    """
+    Replace all occurrences of text matching FIND (case-sensitive) in each
+    packet IN with the given REPL and send to OUT
+    """
+    find = FIND.receive_once()
+    repl = REPL.receive()
 
-    for pin in IN:
-        text = pin.get_content()
-        out = text.replace(find, repl)
-        pin.drop()
+    for s in IN.iter_contents():
+        out = s.replace(find, repl)
         OUT.send(out)
 
 
 @component
-@outport("OUT")
-@inport("IN")
-def StripPunct(IN, OUT):
-    "Remove Unicode punctuation from IN and send stripped packets OUT"
-    for pin in IN:
-        sin = pin.get_content()
-        pin.drop()
-        stripped = sin.replace_all("\\p{P}+", "")
-        OUT.send(stripped)
-
-
-@component
-@outport("OUT")
-@inport("IN")
+@outport("OUT", type=str)
+@inport("IN", type=str)
 @inport("MEASURE", type=int)
 def WordsToLine(IN, MEASURE, OUT):
-    """Take words IN and deliver OUT a line no longer than MEASURE characters"""
+    """
+    Take words IN and deliver OUT a line no longer than MEASURE characters
+    """
     measure = MEASURE.receive_once()
-    if measure is None:
-        return
 
     line = ""
-    for pin in IN:
-        w = pin.get_content().strip()
-        pin.drop()
-
-        if len(line) + 1 + len(w) > measure:
+    for word in IN.iter_contents():
+        if measure and (len(line) + 1 + len(word)) > measure:
             OUT.send(line)
-            line = w
+            # restart line
+            line = word
         else:
             if line:
                 line += " "
-            line += w
+            line += word
     if line:
+        # remainder
         OUT.send(line)
 
+
 @component
-@outport("OUT")
-@inport("IN")
+@outport("OUT", type=str)
+@inport("IN", type=str)
 def ConcatStr(IN, OUT):
-    """Concatenate all packets in the input stream into one String"""
+    """
+    Concatenate all packets from IN into one string sent to OUT
+    """
     result = ""
-    for s in IN.iter_content():
+    for s in IN.iter_contents():
         result += s
     OUT.send(result)
 
 
-@outport("ACC")
-@outport("REJ")
-@inport("IN")
-@inport("TEST")
+@component
+@outport("ACC", type=str)
+@outport("REJ", type=str)
+@inport("IN", type=str)
+@inport("TEST", type=str)
 def StartsWith(IN, TEST, ACC, REJ):
-    """Select packets starting with specified string"""
+    """
+    Route packets starting with TEST to ACC, others to REJ
+    """
     test_str = TEST.receive_once()
 
-    for p in IN:
-        content = p.get_content()
-        if content.startswith(test_str):
+    for p in IN.iter_packets():
+        s = p.get_contents()
+        if s.startswith(test_str):
             ACC.send(p)
         else:
             REJ.send(p)

@@ -324,7 +324,7 @@ class Component(with_metaclass(ABCMeta, Greenlet)):
         self.network.drops += 1
         self.validate_packet(packet)
         packet.clear_owner()
-        return packet.get_content()
+        return packet.get_contents()
 
     def get_packet_count(self):
         return self._packet_count
