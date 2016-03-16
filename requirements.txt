@@ -1,7 +1,3 @@
 gevent>=1.0.2
 termcolor
-pytest>=2.8.7
-tox>=2.3.1
-coverage
-python-coveralls
 future

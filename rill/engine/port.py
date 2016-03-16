@@ -397,7 +397,8 @@ class PortCollection(PortContainerMixin):
         -------
         ``Port`` or ``ArrayPort``
         """
-        return self._ports.values()
+        # cast to list for python 3 compat
+        return list(self._ports.values())
 
     def iter_ports(self):
         """
