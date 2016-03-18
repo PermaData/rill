@@ -692,6 +692,7 @@ class SynchronizedInputCollection(BaseInputCollection, InputInterface):
         if len(static) != len(ports):
             return static
         else:
+            # return no ports if all static to avoid infinite loop in receive
             return []
 
     def receive(self):
@@ -719,7 +720,7 @@ class SynchronizedInputCollection(BaseInputCollection, InputInterface):
         group = gevent.pool.Group()
         result = group.map(lambda x: x.receive(), self.ports())
         valid = [p for p in result if p is not None]
-        if valid != result:
+        if valid != result or not result:
             self.close()
             for p in valid:
                 p.drop()

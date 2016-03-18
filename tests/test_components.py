@@ -55,6 +55,8 @@ def Passthru(self, IN, OUT):
 class Discard(Component):
     def execute(self):
         p = self.inports.IN.receive()
+        if p is None:
+            return
         self.packets.append(p)
         self.values.append(p.get_contents())
         self.drop(p)
@@ -500,6 +502,16 @@ def test_synced_receive2(net, discard):
         ('000004', '000002', 'initial'),
         ('000003', '000001', 'initial')
     ]
+
+
+def test_synced_receive3(net, discard):
+    # contains the call to synced:
+    net.add_component("Merge", Group)
+    dis = net.add_component("Discard", discard)
+    net.connect("Merge.OUT", "Discard.IN")
+    net.go()
+
+    assert dis.values == []
 
 
 def test_merge_sort_drop(net, discard):
