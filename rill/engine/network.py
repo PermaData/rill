@@ -5,11 +5,10 @@ import time
 from future.utils import raise_with_traceback
 
 from rill.engine.exceptions import FlowError
-from rill.engine.component import Component, ProtoPort, logger
+from rill.engine.component import Component, logger
 from rill.engine.status import StatusValues
-from rill.engine.outputport import OutputPort
-from rill.engine.inputport import Connection, InputPort, \
-    InitializationConnection
+from rill.engine.outputport import OutputPort, OutputArray
+from rill.engine.inputport import Connection, InputPort, InputArray
 from rill.engine.utils import CountDownLatch
 
 import gevent
@@ -119,29 +118,40 @@ class Network(object):
             raise FlowError("Reference to unknown component " + name)
         return comp
 
-    def get_component_and_port(self, arg):
+    def get_component_port(self, arg, index=None, kind=None):
         """
         Parameters
         ----------
-        arg : list or str or ``rill.engine.component.ProtoPort``
+        arg : ``rill.engine.outputport.OutputPort`` or
+            ``rill.engine.inputport.InputPort`` or str
 
         Returns
         -------
-        comp : ``rill.engine.component.Component``
-        port : ``rill.engine.component.ProtoPort``
+        port : ``rill.engine.outputport.OutputPort`` or
+            ``rill.engine.inputport.InputPort``
         """
-        if isinstance(arg, ProtoPort):
-            return arg.component, arg
-
-        if isinstance(arg, (tuple, list)):
-            comp, port = arg
-        elif isinstance(arg, basestring):
-            comp, port = arg.split('.')
+        if isinstance(arg, (OutputPort, OutputArray, InputPort, InputArray)):
+            port = arg
         else:
-            raise TypeError(arg)
+            if isinstance(arg, (tuple, list)):
+                comp_name, port_name = arg
+            elif isinstance(arg, basestring):
+                comp_name, port_name = arg.split('.')
+            else:
+                raise TypeError(arg)
 
-        comp = self.component(comp)
-        return comp, ProtoPort(comp, port)
+            comp = self.component(comp_name)
+            port = comp.port(port_name, kind=kind)
+
+        if port.is_array():
+            port = port.get_element(index, create=True)
+
+        if kind == 'input' and not isinstance(port, InputPort):
+            raise TypeError("Expected InputPort, got {}".format(type(port)))
+        elif kind == 'output' and not isinstance(port, OutputPort):
+            raise TypeError("Expected OutputPort, got {}".format(type(port)))
+
+        return port
 
     def connect(self, sender, receiver, connection_capacity=None,
                 count_packets=False):
@@ -151,40 +161,18 @@ class Network(object):
 
         Parameters
         ----------
-        sender : ``rill.engine.component.ProtoPort`` or str
-        receiver : ``rill.engine.component.ProtoPort`` or str
+        sender : ``rill.engine.inputport.InputPort`` or str
+        receiver : ``rill.engine.outputport.OutputPort`` or str
 
         Returns
         -------
         ``rill.engine.inputport.InputPort``
         """
-        sender, out_p = self.get_component_and_port(sender)
-        receiver, in_p = self.get_component_and_port(receiver)
+        outport = self.get_component_port(sender, kind='output')
+        inport = self.get_component_port(receiver, kind='input')
 
         if connection_capacity is None:
             connection_capacity = self.default_capacity
-
-        # start processing output port
-        outport = sender.outports[out_p.name]
-        if outport.is_array():
-            outport = outport.get_element(out_p.index, create=True)
-
-        if type(outport) is not OutputPort:
-            raise TypeError("Expected OutputPort, got %s" % type(outport))
-
-        # start processing input port
-        inport = receiver.inports[in_p.name]
-        if inport.is_array():
-            inport = inport.get_element(in_p.index, create=True)
-
-        if isinstance(inport, InitializationConnection):
-            # a previous initialize specified a destination port with the same
-            # name and index
-            raise FlowError(
-                "Port cannot have both an initial packet and a "
-                "connection: {}".format(inport))
-        elif type(inport) is not InputPort:
-            raise TypeError("Expected InputPort, got %s" % type(inport))
 
         if inport._connection is None:
             inport._connection = Connection()
@@ -198,17 +186,13 @@ class Network(object):
         Parameters
         ----------
         content : object
-        receiver : ``rill.engine.component.ProtoPort`` or str
+        receiver : ``rill.engine.inputport.InputPort`` or str
         """
-        receiver, in_p = self.get_component_and_port(receiver)
+        inport = self.get_component_port(receiver, kind='input')
 
-        if in_p.name == 'NULL':
+        if inport.name == 'NULL':
             raise FlowError(
-                "Cannot initialize NULL port: " + receiver.get_name())
-
-        inport = receiver.inports[in_p.name]
-        if inport.is_array():
-            inport = inport.get_element(in_p.index, create=True)
+                "Cannot initialize NULL port: {}".format(inport))
 
         inport.initialize(content)
 
@@ -223,10 +207,6 @@ class Network(object):
         self.drop_olds = 0
 
         now = time.time()
-
-        # During go() no ConcurrentModification self._error can occur, because the network is
-        # finished constructing so the self._components will not change. If it could, then
-        # synchronized would be necessary.
 
         try:
             self.active = True
@@ -254,7 +234,8 @@ class Network(object):
             # FIXME: figure out how to re-raise exception with traceback
             raise_with_traceback(self._error)
 
-    # FIXME: get rid of this:  we don't need the CDL anymore
+    # FIXME: get rid of this:  we don't need the CDL anymore...
+    # may be useful if we want to support threading systems other than gevent
     def indicate_terminated(self, comp):
         # -- synchronized (comp)
         comp.status = StatusValues.TERMINATED

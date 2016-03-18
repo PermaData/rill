@@ -6,12 +6,14 @@ from rill.engine.component import Component, inport, outport
 from rill.engine.network import Network
 from rill.engine.status import StatusValues
 from rill.engine.component import logger
-from rill.engine.inputport import InitializationConnection
+from rill.engine.inputport import InputPort
+from rill.engine.outputport import OutputPort
 from rill.engine.exceptions import FlowError
 from rill.engine.packet import Packet
 
 
-@inport("NAME")
+@inport("NAME", type=str)
+@inport("INDEX", type=int)
 @outport("OUT")
 class SubIn(Component):
     def execute(self):
@@ -23,10 +25,14 @@ class SubIn(Component):
             return
 
         inport = self.mother.inports[pname]
-        self.trace_funcs("Accessing input port: " + inport.get_name())
+        index = self.inports.INDEX.receive_once()
+        if index is not None:
+            inport = inport[index]
 
-        # I think this works!
-        if isinstance(inport, InitializationConnection):
+        self.trace_funcs("Accessing input port: {}".format(inport))
+
+        # FIXME: this is definitely broken:
+        if inport.is_static():
             old_receiver = inport.component
             iic = InitializationConnection(self, inport.name, inport._content)
             # iic.network = iico.network
@@ -44,12 +50,13 @@ class SubIn(Component):
                 self.outports.OUT.send(p)
 
         # inport.close()
-        self.trace_funcs("Releasing input port: " + inport.get_name())
+        self.trace_funcs("Releasing input port: {}".format(inport))
 
-        inport.set_receiver(old_receiver)
+        inport.component = old_receiver
 
 
-@inport("NAME")
+@inport("NAME", type=str)
+@inport("INDEX", type=int)
 @outport("OUT")
 class SubInSS(Component):
     def execute(self):
@@ -59,14 +66,16 @@ class SubInSS(Component):
             return
 
         inport = self.mother.inports[pname]
+        index = self.inports.INDEX.receive_once()
+        if index is not None:
+            inport = inport[index]
 
         self.trace_funcs("Accessing input port: {}".format(inport))
 
         old_receiver = inport.component
-        if isinstance(inport, InitializationConnection):
+        if inport.is_static():
             raise FlowError("SubinSS cannot support IIP - use Subin")
 
-        # inport.set_receiver(self)
         inport.component = self
         level = 0
         for p in inport:
@@ -96,7 +105,8 @@ class SubInSS(Component):
 
 
 @inport("IN")
-@inport("NAME")
+@inport("NAME", type=str)
+@inport("INDEX", type=int)
 class SubOut(Component):
     def execute(self):
         pname = self.inports.NAME.receive_once()
@@ -104,21 +114,28 @@ class SubOut(Component):
             return
 
         outport = self.mother.outports[pname]
-        self.trace_funcs("Accessing output port: " + outport.get_name())
-        outport.set_sender(self)
+        index = self.inports.INDEX.receive_once()
+        if index is not None:
+            outport = outport[index]
+
+        self.trace_funcs("Accessing output port: {}".format(outport))
+        outport.component = self
 
         for p in self.inports.IN:
             outport.send(p)
 
-        self.trace_funcs("Releasing output port: " + outport.get_name())
+        self.trace_funcs("Releasing output port: {}".format(outport))
 
 
 @inport("IN")
-@inport("NAME")
+@inport("NAME", type=str)
+@inport("INDEX", type=int)
 class SubOutSS(Component):
-    """Look after output from subnet - added for subnet support
-     *  Differs from SubOut in that it adds an open bracket at the beginning, and a
-     *  close bracket at the end
+    """
+    Look after output from subnet
+
+    Differs from SubOut in that it adds an open bracket at the beginning, and a
+    close bracket at the end
     """
 
     def execute(self):
@@ -127,8 +144,11 @@ class SubOutSS(Component):
             return
 
         outport = self.mother.outports[pname]
+        index = self.inports.INDEX.receive_once()
+        if index is not None:
+            outport = outport[index]
+
         self.trace_funcs("Accessing output port: {}".format(outport))
-        # outport.set_sender(self)
         outport.component = self
 
         p = self.create(Packet.OPEN)
@@ -152,6 +172,43 @@ class SubNet(with_metaclass(ABCMeta, Component, Network)):
     def define(self):
         raise NotImplementedError
 
+    def export(self, internal_port, external_port):
+        """
+        Expose a port.
+
+        Parameters
+        ----------
+        external_port : ``rill.engine.outputport.OutputPort`` or
+                        ``rill.engine.inputport.InputPort`` or str
+            external SubNet port
+        internal_port : ``rill.engine.outputport.OutputPort`` or
+                        ``rill.engine.inputport.InputPort`` or str
+            internal port
+        """
+        # FIXME: support exporting an array port to array port. currently,
+        # if you try to do that you'll end up exporting the first element
+        external_port = self.port(external_port)
+
+        if external_port.is_array():
+            external_port = external_port.get_element(create=True)
+
+        if isinstance(external_port, InputPort):
+            internal_port = self.get_component_port(internal_port,
+                                                    kind='input')
+            subcomp = self.add_component('_' + external_port.name, SubIn,
+                                         NAME=external_port._name)
+            if external_port.index is not None:
+                self.initialize(external_port.index, subcomp.inports.INDEX)
+            self.connect(subcomp.outports.OUT, internal_port)
+        elif isinstance(external_port, OutputPort):
+            internal_port = self.get_component_port(internal_port,
+                                                    kind='output')
+            subcomp = self.add_component('_' + external_port.name, SubOut,
+                                         NAME=external_port._name)
+            if external_port.index is not None:
+                self.initialize(external_port.index, subcomp.inports.INDEX)
+            self.connect(internal_port, subcomp.inports.IN)
+
     def execute(self):
         if self.status != StatusValues.ERROR:
 
@@ -169,6 +226,8 @@ class SubNet(with_metaclass(ABCMeta, Component, Network)):
             # trace_file_list = mother.trace_file_list
 
             self.define()
+            # FIXME: warn if any external ports have not been connected
+
             # if not all(c._check_required_ports() for c in
             #            self.get_components().values()):
             #     raise FlowError(
@@ -181,7 +240,7 @@ class SubNet(with_metaclass(ABCMeta, Component, Network)):
             self.wait_for_all()
 
             for ip in self.inports.ports():
-                if isinstance(ip, InitializationConnection):
+                if ip.is_static():
                     ip.close()
 
             # Iterator allout = (outports.values()).iterator()
@@ -211,60 +270,6 @@ class SubNet(with_metaclass(ABCMeta, Component, Network)):
             comp.terminate(new_status)
         self.status = new_status
         self.interrupt()
-
-    """
-    Declares input ports not specified in annotations.
-    @param port_name the name of the input port
-
-    def declare_input_port(port_name):
-      input_port_attrs.put(port_name, inport():
-
-         array():
-          return False
-
-         description():
-          return ""
-
-         Class type():
-          return Object
-
-         value():
-          return port_name
-
-         fixed_size():
-          return False
-
-         Class<? extends Annotation> annotation_type():
-          return self.__class__)
-   """
-    """
-    Declares output ports not specified in annotations.
-    @param port_name the name of the output port
-
-    def declare_output_port(port_name):
-      output_port_attrs.put(port_name, outport():
-
-         array():
-          return False
-
-         description():
-          return ""
-
-         Class type():
-          return Object
-
-         value():
-          return port_name
-
-         Class<? extends Annotation> annotation_type():
-          return self.__class__
-
-         optional():
-          return False
-
-         fixed_size():
-          return False)
-     """
 
 
 @inport("NAME")

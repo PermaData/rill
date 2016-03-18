@@ -268,6 +268,9 @@ class ArrayPort(BasePort, PortContainerMixin):
     __iter__ = iter_ports
 
     def __getitem__(self, index):
+        # FIXME: if the component is in an uninitialized state have this
+        # default to get_element(index, create=True).  useful while building
+        # networks. e.g.  mycomp.port('IN')[2]
         return self._elements[index]
 
     def __setitem__(self, index, port):
@@ -362,7 +365,7 @@ class ArrayPort(BasePort, PortContainerMixin):
                     missing.append(str(port))
             if missing:
                 raise FlowError(
-                    "Required {} array port {} has missing elements: {}".format(
+                    "Required {} {} has missing elements: {}".format(
                         self.port_class.__name__, self, ', '.join(missing)))
 
         super(ArrayPort, self).open()
@@ -426,7 +429,7 @@ class PortCollection(PortContainerMixin):
         try:
             return self._ports[item]
         except KeyError as e:
-            raise_from(FlowError("Port {}.{} does not exist".format(
+            raise_from(KeyError("Port {}.{} does not exist".format(
                 self.component.get_name(), item)), e)
 
     def _pop_null_port(self):

@@ -7,6 +7,15 @@ from rill.engine.subnet import SubNet, SubInSS, SubOutSS
 @inport("IN")
 class PassthruNet(SubNet):
     def define(self):
+        self.add_component("Pass", Passthru)
+        self.export("Pass.OUT", "OUT")
+        self.export("Pass.IN", "IN")
+
+
+@outport("OUT")
+@inport("IN")
+class PassthruNetSS(SubNet):
+    def define(self):
         self.add_component("SUBIN", SubInSS, NAME='IN')
         self.add_component("SUBOUT", SubOutSS, NAME='OUT')
         self.add_component("Pass", Passthru)

@@ -4,8 +4,7 @@ import re
 from abc import ABCMeta, abstractmethod
 from threading import Condition
 
-from future.utils import with_metaclass
-
+from future.utils import with_metaclass, raise_from
 import gevent
 from gevent import Greenlet, GreenletExit
 from gevent.lock import RLock
@@ -19,6 +18,8 @@ from rill.engine.inputport import InputPort, InputArray, InputCollection, \
 from rill.engine.packet import Packet, Chain
 from rill.engine.exceptions import FlowError, ComponentException
 from rill.engine.decorators import *
+
+PORT_NAME_REG = r"^([a-zA-Z][_a-zA-Z0-9]*)(?:\[(\d+)\])?$"
 
 
 class Adapter(logging.LoggerAdapter):
@@ -116,33 +117,6 @@ outport._static_port_type = OutputPort
 outport._array_port_type = OutputArray
 
 
-class ProtoPort(object):
-    """
-    Holds data about a BasePort prior to creation.
-    """
-    PORT_NAME_REG = r"^([a-zA-Z][_a-zA-Z0-9]*)(?:\[(\d+)\])?$"
-
-    def __init__(self, component, name, index=None):
-        self.component = component
-
-        reg = re.compile(self.PORT_NAME_REG)
-        m = reg.match(name)
-
-        if not m:
-            raise FlowError("Invalid port name: " + name)
-
-        self.name, i = m.groups()
-        if index is not None:
-            # use the value that we were passed
-            if i is not None:
-                raise FlowError("Cannot specify element number twice: {}, "
-                                "index: {}".format(name, index))
-            self.index = index
-        else:
-            # use the value that we parsed
-            self.index = int(i) if i is not None else None
-
-
 class Component(with_metaclass(ABCMeta, Greenlet)):
     def __init__(self, name, mother):
         """
@@ -208,8 +182,61 @@ class Component(with_metaclass(ABCMeta, Greenlet)):
         """
         raise NotImplementedError
 
-    def port(self, name, index=None):
-        return ProtoPort(self, name, index)
+    def port(self, port_name, kind=None):
+        """
+        Get a port on the component.
+
+        Parameters
+        ----------
+        port_name : str
+        kind : str or None
+
+        Returns
+        -------
+        port : ``rill.engine.outputport.OutputPort`` or
+               ``rill.engine.outputport.OutputArray`` or
+               ``rill.engine.inputport.InputPort`` or
+               ``rill.engine.inputport.InputArray``
+        """
+        reg = re.compile(PORT_NAME_REG)
+        m = reg.match(port_name)
+
+        if not m:
+            raise FlowError("Invalid port name: " + port_name)
+
+        port_name, index = m.groups()
+        if index is not None:
+            index = int(index)
+
+        if kind == 'input':
+            try:
+                port = self.inports[port_name]
+            except KeyError as err:
+                raise_from(FlowError(str(err)), err)
+        elif kind == 'output':
+            try:
+                port = self.outports[port_name]
+            except KeyError as err:
+                raise_from(FlowError(str(err)), err)
+        elif not kind:
+            try:
+                port = self.outports[port_name]
+            except KeyError:
+                try:
+                    port = self.inports[port_name]
+                except KeyError:
+                    raise FlowError("{} is not a registered input or "
+                                    "output port".format(port_name))
+        else:
+            raise TypeError(kind)
+
+        if index is not None:
+            if not port.is_array():
+                raise FlowError("Element {} specified for non-array "
+                                "port {}".format(index, port))
+            port = port.get_element(index, create=True)
+
+        return port
 
     def get_parents(self):
         from rill.engine.subnet import SubNet
