@@ -277,9 +277,9 @@ class SubNet(with_metaclass(ABCMeta, Component, Network)):
 @outport("OUT")
 class SubOI(Component):
     """Look after (synchronous) output/input from/to subnet.
-    This component sends a single packet out to the (external) output port, and then
-    immediately does a receive from the corresponding (external) input port. This process
-    repeats until a None is received on the input port.
+    This component sends a single packet out to the (external) output port,
+    and then immediately does a receive from the corresponding (external) input
+    port. This process repeats until a None is received on the input port.
     """
 
     def execute(self):

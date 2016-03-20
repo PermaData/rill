@@ -705,6 +705,9 @@ class SynchronizedInputCollection(BaseInputCollection, InputInterface):
         -------
         tuple of ``rill.engine.packet.Packet``
         """
+        if not self.ports():
+            return
+
         # result = []
         # for port in self.ports():
         #     packet = port.receive()
@@ -720,7 +723,7 @@ class SynchronizedInputCollection(BaseInputCollection, InputInterface):
         group = gevent.pool.Group()
         result = group.map(lambda x: x.receive(), self.ports())
         valid = [p for p in result if p is not None]
-        if valid != result or not result:
+        if valid != result:
             self.close()
             for p in valid:
                 p.drop()

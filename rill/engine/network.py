@@ -240,7 +240,7 @@ class Network(object):
         # -- synchronized (comp)
         comp.status = StatusValues.TERMINATED
         # -- end
-        self.logger.debug(comp.get_name() + ": Terminated")
+        self.logger.debug("{}: Terminated", args=[comp])
         self.cdl.count_down()
         # net.interrupt()
 
@@ -285,6 +285,7 @@ class Network(object):
         # FIXME: overkill
         sys.exit(0)  # trying this - see if more friendly!
 
+    # FIXME: make private
     def wait_for_all(self):
         """
         Test if network as a whole has terminated
@@ -465,7 +466,8 @@ class Network(object):
     # FIXME: remove
     def get_component(self, name):
         """
-        Returns the requested component in self network if present, Noneif not present.
+        Returns the requested component in this network if present or None
+        if not present.
 
         Returns
         -------

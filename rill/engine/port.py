@@ -89,9 +89,7 @@ class BasePort(with_metaclass(ABCMeta, object)):
         -------
         str
         """
-        name = self.component.get_full_name()
-        name += '.' + self.name
-        return name
+        return '{}.{}'.format(self.component, self.name)
 
     def is_element(self):
         """
@@ -394,7 +392,7 @@ class PortCollection(PortContainerMixin):
 
     def root_ports(self):
         """
-        Return the root ports, including array ports.
+        Return the root ports, including array ports but not their children.
 
         Yields
         -------
@@ -430,7 +428,7 @@ class PortCollection(PortContainerMixin):
             return self._ports[item]
         except KeyError as e:
             raise_from(KeyError("Port {}.{} does not exist".format(
-                self.component.get_name(), item)), e)
+                self.component, item)), e)
 
     def _pop_null_port(self):
         # special handling of NULL port. this port is removed from the port map
