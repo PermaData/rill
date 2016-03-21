@@ -189,7 +189,7 @@ class Component(with_metaclass(ABCMeta, Greenlet)):
         Parameters
         ----------
         port_name : str
-        kind : str or None
+        kind : {'in', 'out'} or None
 
         Returns
         -------
@@ -208,12 +208,12 @@ class Component(with_metaclass(ABCMeta, Greenlet)):
         if index is not None:
             index = int(index)
 
-        if kind == 'input':
+        if kind == 'in':
             try:
                 port = self.inports[port_name]
             except KeyError as err:
                 raise_from(FlowError(str(err)), err)
-        elif kind == 'output':
+        elif kind == 'out':
             try:
                 port = self.outports[port_name]
             except KeyError as err:
@@ -286,11 +286,8 @@ class Component(with_metaclass(ABCMeta, Greenlet)):
         """
         Initialize internal attributes from decorators.
         """
-        self._must_run = must_run.get(self.__class__)
-        self._self_starting = self_starting.get(self.__class__)
-
-        inports = inport.get(self.__class__)
-        outports = outport.get(self.__class__)
+        inports = self._inport_definitions
+        outports = self._outport_definitions
         # Enforce unique names between input and output ports. This ensures
         # that _FunctionComponent functions can receive a named argument per
         # port
@@ -524,7 +521,7 @@ class Component(with_metaclass(ABCMeta, Greenlet)):
         if port.args.get('fixed_size') and not port.array:
             raise ValueError(
                 "{}.{}: @{} specified fixed_size but not array".format(
-                    self.get_name(), port.args['name'],
+                    self, port.args['name'],
                     port.__class__.__name__))
         if port.array:
             ptype = port._array_port_type
@@ -638,17 +635,17 @@ class Component(with_metaclass(ABCMeta, Greenlet)):
         if not self.started():
             self.start()
         else:
-            self.trace_locks("act - lock " + self.get_name())
+            self.trace_locks("act - lock")
             try:
                 with self._lock:
                     if self.status in (StatusValues.DORMANT,
                                        StatusValues.SUSP_FIPE):
                         self._can_go.notify()
-                        self.trace_locks("act - signal " + self.get_name())
+                        self.trace_locks("act - signal")
             except GreenletExit as e:
                 return
             finally:
-                self.trace_locks("act - unlock " + self.get_name())
+                self.trace_locks("act - unlock")
 
     def _await_actionable_input_state(self):
         """
