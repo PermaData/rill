@@ -118,6 +118,11 @@ outport._array_port_type = OutputArray
 
 
 class Component(with_metaclass(ABCMeta, Greenlet)):
+    _inport_definitions = []
+    _outport_definitions = []
+    _self_starting = False
+    _must_run = False
+
     def __init__(self, name, mother):
         """
         Parameters
@@ -150,11 +155,6 @@ class Component(with_metaclass(ABCMeta, Greenlet)):
         # count of packets owned by this component.
         # Whenever the component deactivates, the count must be zero.
         self._packet_count = 0
-
-        # set by must_run annotation
-        self._must_run = False
-        # set by self_starting annotation
-        self._self_starting = False
 
         #
         self.auto_starting = False
