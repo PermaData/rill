@@ -62,7 +62,6 @@ class Discard(Component):
         self.drop(p)
 
     def init(self):
-        super(Discard, self).init()
         self.values = []
         self.packets = []
 
@@ -76,7 +75,6 @@ class DiscardLooper(Component):
             self.drop(p)
 
     def init(self):
-        super(DiscardLooper, self).init()
         self.values = []
         self.packets = []
 

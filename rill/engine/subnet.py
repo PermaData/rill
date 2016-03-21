@@ -163,7 +163,7 @@ class SubOutSS(Component):
         self.trace_funcs("Releasing output port: {}".format(outport))
 
 
-class SubNet(with_metaclass(ABCMeta, Component, Network)):
+class SubNet(with_metaclass(ABCMeta, Network, Component)):
     def __init__(self, name, mother):
         Component.__init__(self, name, mother)
         Network.__init__(self)
@@ -210,6 +210,8 @@ class SubNet(with_metaclass(ABCMeta, Component, Network)):
             self.connect(internal_port, subcomp.inports.IN)
 
     def execute(self):
+        # FIXME: this, signal_error, and terminate are the only things in
+        # SubNet that require it to be a ComponentRunner.  do we need them?
         if self.status != StatusValues.ERROR:
 
             self.trace_funcs("started")

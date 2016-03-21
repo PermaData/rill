@@ -5,7 +5,7 @@ import time
 from future.utils import raise_with_traceback
 
 from rill.engine.exceptions import FlowError
-from rill.engine.component import Component, logger
+from rill.engine.component import Component, ComponentRunner, logger
 from rill.engine.status import StatusValues
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import Connection, InputPort, InputArray
@@ -21,13 +21,11 @@ except NameError:
 
 class Network(object):
     """
-    The abstract class which all flow networks extend directly or indirectly. A
-    specific flow network must override the `define()` method, which
-    is written using the <i>mini-language</i> (actually just highly restricted
-    Java invoking the `protected` methods of self class). The
-    mini-language specifies what threads are to be created using which
-    self._components, and what connections are established between the ports of those
-    self._components.
+    A network of comonents.
+
+    Attributes
+    ----------
+    _components : dict of (str, ``rill.engine.component.ComponentRunner``
     """
 
     def __init__(self, default_capacity=10):
@@ -76,8 +74,6 @@ class Network(object):
         -------
         ``rill.engine.component.Component``
         """
-        from rill.engine.subnet import SubNet
-
         if name in self._components:
             raise FlowError(
                 "Component {} already exists in network".format(name))
@@ -87,17 +83,6 @@ class Network(object):
         comp = comp_type(name, self)
         self.put_component(name, comp)
 
-        # FIXME: this can be found by the component by calling get_parents(). it doesn't need to be assigned here
-        # find the root Network and assign it to comp.network
-        network = self
-        while True:
-            if not isinstance(network, SubNet):
-                break
-            network = network.mother
-        comp.network = network
-
-        comp.status = StatusValues.NOT_STARTED
-        comp.init()
         for name, value in initializations.items():
             self.initialize(value, comp.port(name))
         return comp
@@ -452,7 +437,6 @@ class Network(object):
     def incr_packet_count(self, connection):
         self._packet_counts[connection] += 1
 
-    # FIXME: remove
     def get_components(self):
         """
         Get a dictionary of components in this network
@@ -461,9 +445,8 @@ class Network(object):
         -------
         dict of str, ``rill.enginge.component.Component`
         """
-        return self._components
+        return dict((c.name, c.component) for c in self._components.items())
 
-    # FIXME: remove
     def get_component(self, name):
         """
         Returns the requested component in this network if present or None
@@ -473,12 +456,14 @@ class Network(object):
         -------
         ``rill.enginge.component.Component`
         """
-        return self._components.get(name)
+        runner = self._components.get(name)
+        if runner is not None:
+            return runner.component
 
-    # FIXME: remove
+    # FIXME: make private
     def put_component(self, name, comp):
         """
-        Adds a component, if necessary replacing the old component.
+        Adds a component and inits it.
 
         Parameters
         ----------
@@ -490,6 +475,25 @@ class Network(object):
         comp : ``rill.enginge.component.Component` or None
             previous component, if set
         """
-        old_component = self._components.get(name)
-        self._components[name] = comp
-        return old_component
+        from rill.engine.subnet import SubNet
+
+        old_component_runner = self._components.get(name)
+
+        # FIXME: this can be found by the component by calling get_parents(). it doesn't need to be assigned here
+        # find the root Network and assign it to comp.network
+        network = self
+        while True:
+            if not isinstance(network, SubNet):
+                break
+            network = network.mother
+        comp.network = network
+
+        runner = ComponentRunner(comp)
+
+        self._components[name] = runner
+
+        runner.status = StatusValues.NOT_STARTED
+        runner.init()
+
+        if old_component_runner is not None:
+            return old_component_runner.component

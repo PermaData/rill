@@ -15,12 +15,18 @@ except AttributeError:
     range = range
 
 
-def current_component():
-    """Get the currently running Component"""
+def current_component_runner():
+    """
+    Get the active Component Runner
+
+    Returns
+    -------
+    ``rill.engine.component.ComponentRunner``
+    """
     import gevent
     import rill.engine.component
     greenlet = gevent.getcurrent()
-    assert isinstance(greenlet, rill.engine.component.Component)
+    assert isinstance(greenlet, rill.engine.component.ComponentRunner)
     return greenlet
 
 
@@ -41,19 +47,19 @@ def synced(*ports):
     ``rill.engine.inputport.SynchronousInputCollection``
     """
     from rill.engine.inputport import SynchronizedInputCollection
-    return SynchronizedInputCollection(current_component(), ports)
+    return SynchronizedInputCollection(current_component_runner(), ports)
 
 
 def eager_merged(*ports):
     from rill.engine.inputport import EagerInputCollection
-    return EagerInputCollection(current_component(), ports)
+    return EagerInputCollection(current_component_runner(), ports)
 
 
 def load_balanced(*ports):
     from rill.engine.outputport import LoadBalancedOutputCollection
-    return LoadBalancedOutputCollection(current_component(), ports)
+    return LoadBalancedOutputCollection(current_component_runner(), ports)
 
 
 def forked(*ports):
     from rill.engine.outputport import ForkedOutputCollection
-    return ForkedOutputCollection(current_component(), ports)
+    return ForkedOutputCollection(current_component_runner(), ports)

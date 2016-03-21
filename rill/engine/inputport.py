@@ -20,6 +20,11 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
 
     @property
     def receiver(self):
+        """
+        Returns
+        -------
+        ``rill.engine.component.ComponentRunner``
+        """
         return self.component
 
     @abstractmethod
@@ -295,9 +300,9 @@ class Connection(ConnectionInterface):
         self._sender_count = 0
         # the connected InputPort
         self.inport = None
-        # the component that is receiving packets on receive()
+        # the ComponentRunner that is receiving packets on receive()
         self.receiver = None
-        # the component currently sending
+        # the ComponentRunner currently sending
         self.sender = None
         # the outport currently sending
         self.outport = None
@@ -396,7 +401,7 @@ class Connection(ConnectionInterface):
                 "{}: Output port is already connected".format(outport))
 
         self.inport = inport
-        self.receiver = inport.component
+        self.receiver = inport.receiver
         self.outports.add(outport)
         outport._connection = self
         self._sender_count += 1
@@ -478,7 +483,7 @@ class Connection(ConnectionInterface):
         self._not_full.set()
         self._not_full.clear()
 
-        packet.set_owner(self.receiver)
+        packet.set_owner(self.receiver.component)
 
         if packet.get_contents() is None:
             self.receiver.logger.debug("Received None packet",

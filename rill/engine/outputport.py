@@ -13,6 +13,11 @@ class OutputInterface(with_metaclass(ABCMeta, PortInterface)):
 
     @property
     def sender(self):
+        """
+        Returns
+        -------
+        ``rill.engine.component.ComponentRunner``
+        """
         return self.component
 
     @abstractmethod
@@ -82,7 +87,7 @@ class OutputPort(Port, OutputInterface):
             packet = self.sender.create(packet)
 
         # FIXME: Added this check, but it changes behavior slightly from before:  owner check occurs before is_connected
-        self.sender.validate_packet(packet)
+        self.sender.component.validate_packet(packet)
 
         # if packet is None:
         #     raise FlowError(
