@@ -118,7 +118,7 @@ outport._array_port_type = OutputArray
 
 
 class Component(with_metaclass(ABCMeta, object)):
-    def __init__(self, name, mother):
+    def __init__(self, name, parent):
         assert name is not None
         self._name = name
 
@@ -127,9 +127,12 @@ class Component(with_metaclass(ABCMeta, object)):
         self._parents = None
 
         # the component's immediate network parent: used for subnet support
-        self.mother = mother
+        self.parent = parent
         # the root network
         self.network = None
+
+        # set by the network
+        self._runner = None
 
         # All the input ports are stored here, keyed by name.
         self.inports = None
@@ -152,30 +155,95 @@ class Component(with_metaclass(ABCMeta, object)):
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.get_full_name())
 
+    def _create_port(self, port):
+        if port.args.get('fixed_size') and not port.array:
+            raise ValueError(
+                "{}.{}: @{} specified fixed_size but not array".format(
+                    self, port.args['name'],
+                    port.__class__.__name__))
+        if port.array:
+            ptype = port._array_port_type
+        else:
+            ptype = port._static_port_type
+        return ptype(self, **port.args)
+
+    def _init(self):
+        """
+        Initialize internal attributes from decorators.
+        """
+        self._must_run = must_run.get(self.__class__)
+        self._self_starting = self_starting.get(self.__class__)
+
+        inports = inport.get(self.__class__)
+        outports = outport.get(self.__class__)
+        # Enforce unique names between input and output ports. This ensures
+        # that _FunctionComponent functions can receive a named argument per
+        # port
+        names = [p.args['name'] for p in inports + outports]
+        dupes = [x for x, count in Counter(names).items() if count > 1]
+        if dupes:
+            self.error(
+                "Duplicate port names: {}".format(', '.join(dupes)))
+
+        self.inports = InputCollection(
+            self, [self._create_port(p) for p in inports + [inport('NULL')]])
+        self.outports = OutputCollection(
+            self, [self._create_port(p) for p in outports + [outport('NULL')]])
+
+        self.init()
+
     def get_parents(self):
+        """
+        Returns
+        -------
+        list of ``rill.engine.network.Network``
+        """
         from rill.engine.subnet import SubNet
         if self._parents is None:
-            m = self.mother
+            parent = self.parent
             parents = []
             while True:
-                if m is None:
+                if parent is None:
                     break
-                if not isinstance(m, SubNet):
+                if not isinstance(parent, SubNet):
                     break
-                parents.append(m.get_name())
-                m = m.mother
+                parents.append(parent)
+                parent = parent.parent
             parents.reverse()
             self._parents = parents
         return self._parents
 
-    # FIXME: property
-    def get_name(self):
-        return self._name
+    def get_children(self):
+        """
+        Returns
+        -------
+        list of ``Component``
+        """
+        return []
 
     # FIXME: property
+    def get_name(self):
+        """
+        Name of the component.
+
+        Returns
+        -------
+        str
+        """
+        return self._name
+
+    # FIXME: cached property
     def get_full_name(self):
+        """
+        Name of the component, including all parent components.
+
+        Returns
+        -------
+        str
+        """
         if self._full_name is None:
-            self._full_name = '.'.join(self.get_parents() + [self.get_name()])
+            self._full_name = '.'.join(
+                [x.get_name() for x in self.get_parents()] + [self.get_name()])
         return self._full_name
 
     def init(self):
@@ -245,7 +313,7 @@ class Component(with_metaclass(ABCMeta, object)):
 
         return port
 
-    def signal_error(self, msg, errtype=FlowError):
+    def error(self, msg, errtype=FlowError):
         raise errtype("{}: {}".format(self, msg))
 
     # Packets --
@@ -362,14 +430,14 @@ class Component(with_metaclass(ABCMeta, object)):
         p = packet
         while p.isinstance(p.owner, Packet):
             if p == subpacket:
-                self.signal_error("Loop in packet tree structure")
+                self.error("Loop in packet tree structure")
             p = p.owner
 
         if p == subpacket:
-            self.signal_error("Loop in packet tree structure")
+            self.error("Loop in packet tree structure")
 
         if p.owner is not self:
-            self.signal_error("Packet not owned (directly or indirectly) "
+            self.error("Packet not owned (directly or indirectly) "
                               "by current component")
 
         chain = packet.chains.get(name)
@@ -392,23 +460,23 @@ class Component(with_metaclass(ABCMeta, object)):
         subpacket : ``rill.engine.packet.Packet``
         """
         if not isinstance(subpacket, Packet):
-            self.signal_error("Expected a Packet instance, got {}".format(
+            self.error("Expected a Packet instance, got {}".format(
                 type(subpacket)))
 
         root = packet.get_root()
         # FIXME: get_root returns a Component, but this code seems to expect a Packet
         if root.owner is not self:
-            self.signal_error(
+            self.error(
                 "Packet not owned (directly or indirectly) "
                 "by current component")
 
         if packet.chains is None or packet.chains.get(name) is None:
-            self.signal_error(
+            self.error(
                 "Named chain does not exist: {}".format(name))
 
         chain = packet.chains.get(name)
         if not chain.members.remove(subpacket):
-            self.signal_error("Object not found on chain {}".format(name))
+            self.error("Object not found on chain {}".format(name))
         subpacket.set_owner(self)
         return
 
@@ -470,18 +538,11 @@ class ComponentRunner(Greenlet):
         # the automatic output port named "NULL"
         self._null_output = None
 
-        # set by must_run annotation
-        self._must_run = False
-        # set by self_starting annotation
-        self._self_starting = False
-
-        #
+        self.network = component.network
+        self._must_run = component._must_run
+        self._self_starting = component._self_starting
         self.auto_starting = False
 
-        # the component's immediate network parent: used for subnet support
-        self.mother = self.component.mother
-        # the root network
-        self.network = self.component.network
         self.timeout = None
 
         # used when evaluating component statuses for deadlocks
@@ -500,42 +561,17 @@ class ComponentRunner(Greenlet):
         return '%s(%r)' % (self.__class__.__name__,
                            self.component.get_full_name())
 
-    def signal_error(self, msg, errtype=FlowError):
-        self.component.signal_error(msg, errtype)
+    def error(self, msg, errtype=FlowError):
+        self.component.error(msg, errtype)
 
     # FIXME: figure out the logging stuff
     def trace_funcs(self, msg, section='funcs'):
         self.logger.debug(msg)
-        # self.mother.trace_funcs(self, msg)
+        # self.parent.trace_funcs(self, msg)
 
     def trace_locks(self, msg, **kwargs):
         self.logger.debug(msg, section='locks', **kwargs)
-        # self.mother.trace_locks(self, msg)
-
-    def init(self):
-        """
-        Initialize internal attributes from decorators.
-        """
-        self._must_run = must_run.get(self.component.__class__)
-        self._self_starting = self_starting.get(self.component.__class__)
-
-        inports = inport.get(self.component.__class__)
-        outports = outport.get(self.component.__class__)
-        # Enforce unique names between input and output ports. This ensures
-        # that _FunctionComponent functions can receive a named argument per
-        # port
-        names = [p.args['name'] for p in inports + outports]
-        dupes = [x for x, count in Counter(names).items() if count > 1]
-        if dupes:
-            self.signal_error(
-                "Duplicate port names: {}".format(', '.join(dupes)))
-
-        self.component.inports = InputCollection(
-            self, [self._create_port(p) for p in inports + [inport('NULL')]])
-        self.component.outports = OutputCollection(
-            self, [self._create_port(p) for p in outports + [outport('NULL')]])
-
-        self.component.init()
+        # self.parent.trace_locks(self, msg)
 
     # Packets --
 
@@ -554,30 +590,6 @@ class ComponentRunner(Greenlet):
     @property
     def outports(self):
         return self.component.outports
-
-    def _create_port(self, port):
-        """
-        Create a port from an ``Annotation``.
-
-        Parameters
-        ----------
-        port : ``rill.engine.decorators.inputport`` or
-            ``rill.engine.decorators.outputport``
-
-        Returns
-        -------
-        ``rill.engine.port.BasePort``
-        """
-        if port.args.get('fixed_size') and not port.array:
-            raise ValueError(
-                "{}.{}: @{} specified fixed_size but not array".format(
-                    self.get_name(), port.args['name'],
-                    port.__class__.__name__))
-        if port.array:
-            ptype = port._array_port_type
-        else:
-            ptype = port._static_port_type
-        return ptype(self, **port.args)
 
     def _open_ports(self):
         """
@@ -654,9 +666,11 @@ class ComponentRunner(Greenlet):
             one of ``rill.engine.status.StatusValues`` (usually "TERMINATED" or
             "ERROR")
         """
+        for child in self.component.get_children():
+            child.terminate(new_status)
         self.logger.debug("Terminated", component=self)
         self.status = new_status
-        # self.mother.indicate_terminated(self)
+        # self.parent.indicate_terminated(self)
         # FIXME: Thread.interrupt()
 
     # def long_wait_start(self, intvl):  # interval in seconds!
@@ -685,17 +699,17 @@ class ComponentRunner(Greenlet):
         if not self.started():
             self.start()
         else:
-            self.trace_locks("act - lock " + self.get_name())
+            self.trace_locks("act - lock")
             try:
                 with self._lock:
                     if self.status in (StatusValues.DORMANT,
                                        StatusValues.SUSP_FIPE):
                         self._can_go.notify()
-                        self.trace_locks("act - signal " + self.get_name())
+                        self.trace_locks("act - signal")
             except GreenletExit as e:
                 return
             finally:
-                self.trace_locks("act - unlock " + self.get_name())
+                self.trace_locks("act - unlock")
 
     def _await_actionable_input_state(self):
         """
@@ -760,7 +774,7 @@ class ComponentRunner(Greenlet):
                            self.component.stack_size() > 0):
                 self._null_input = None
                 # FIXME: added has_error to allow this loop to exit if another
-                # thread calls mother.signal_error() to set our status to ERROR
+                # thread calls parent.signal_error() to set our status to ERROR
                 if self.is_terminated() or self.has_error():
                     break
 
@@ -780,7 +794,7 @@ class ComponentRunner(Greenlet):
                     self.trace_funcs(
                         "deactivated holding {} packets".format(
                             self.component._packet_count))
-                    self.signal_error(
+                    self.error(
                         "{} packets not disposed of during component "
                         "deactivation".format(self.component._packet_count))
 
@@ -814,8 +828,8 @@ class ComponentRunner(Greenlet):
             self._close_ports()
 
             if self.component.stack_size() != 0:
-                self.signal_error("Component terminated with stack not empty")
-            self.mother.indicate_terminated(self)
+                self.error("Compodenent terminated with stack not empty")
+            self.component.parent.indicate_terminated(self)
 
         except ComponentException as e:
             # FIXME:
@@ -825,14 +839,15 @@ class ComponentRunner(Greenlet):
                     self.logger.error(
                         "terminated with exception code " + e.get_value())
 
-                    if self.mother is not None:
-                        self.mother.signal_error(e)
+                    if self.parent is not None:
+                        # record the error and terminate siblings
+                        self.parent.signal_error(e)
                     self._close_ports()
             raise GreenletExit()
 
         except Exception as e:
-            # don't tell the mother if we are already in the ERROR or TERMINATE state
-            # because then the mother told us to terminate
+            # don't tell the parent if we are already in the ERROR or TERMINATE state
+            # because then the parent told us to terminate
             if self.is_terminated() or self.has_error():
                 # if we are in the TERMINATED or ERROR state we terminated
                 # intentionally
@@ -843,9 +858,9 @@ class ComponentRunner(Greenlet):
 
             self.status = StatusValues.ERROR
 
-            if self.mother is not None:
-                self.mother.signal_error(e)
-
+            if self.component.parent is not None:
+                # record the error and terminate siblings
+                self.component.parent.signal_error(e)
             self._close_ports()
 
     def started(self):

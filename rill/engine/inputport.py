@@ -25,7 +25,7 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
         -------
         ``rill.engine.component.ComponentRunner``
         """
-        return self.component
+        return self.component._runner
 
     @abstractmethod
     def receive(self):
@@ -206,6 +206,25 @@ class ConnectionInterface(with_metaclass(ABCMeta, object)):
     def send(self, packet, outport):
         raise NotImplementedError
 
+    @property
+    def receiver(self):
+        """
+        Returns
+        -------
+        ``rill.engine.component.ComponentRunner``
+        """
+        return self.inport.component._runner
+
+    @property
+    def sender(self):
+        """
+        Returns
+        -------
+        ``rill.engine.component.ComponentRunner``
+        """
+        return self.outport.component._runner
+
+
     @abstractmethod
     def receive(self):
         raise NotImplementedError
@@ -239,8 +258,6 @@ class InitializationConnection(ConnectionInterface):
     def __init__(self, content, inport):
         # the connected InputPort
         self.inport = inport
-        # the component that is receiving packets on receive()
-        self.receiver = inport.component
         self._content = content
         self._is_closed = True
 
@@ -300,10 +317,6 @@ class Connection(ConnectionInterface):
         self._sender_count = 0
         # the connected InputPort
         self.inport = None
-        # the ComponentRunner that is receiving packets on receive()
-        self.receiver = None
-        # the ComponentRunner currently sending
-        self.sender = None
         # the outport currently sending
         self.outport = None
         # all connected OutputPorts
@@ -401,7 +414,6 @@ class Connection(ConnectionInterface):
                 "{}: Output port is already connected".format(outport))
 
         self.inport = inport
-        self.receiver = inport.receiver
         self.outports.add(outport)
         outport._connection = self
         self._sender_count += 1
@@ -517,7 +529,6 @@ class Connection(ConnectionInterface):
         """
 
         self.outport = outport
-        self.sender = outport.sender
 
         if self.is_closed():
             self.sender.logger.warning("Send: Inport closed. "
@@ -547,7 +558,7 @@ class Connection(ConnectionInterface):
                 # wait()
                 self._not_full.wait()
 
-                self.sender = outport.sender
+                self.outport = outport
                 self.sender.status = StatusValues.ACTIVE
                 self.sender.logger.debug("Send: Resume delivery to {}",
                                          port=outport, args=[self.inport])
@@ -579,7 +590,6 @@ class Connection(ConnectionInterface):
 
                 outport.sender.status = StatusValues.ACTIVE
                 self.sender.network.active = True
-                # self.sender = None
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -588,7 +598,6 @@ class Connection(ConnectionInterface):
             self.sender.trace_locks("send - unlock", port=outport)
 
         self.sender.network.sends += 1
-        self.sender = None
         self.outport = None
         return True
 

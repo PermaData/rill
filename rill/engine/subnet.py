@@ -24,12 +24,12 @@ class SubIn(Component):
         if self.outports.OUT.is_closed():
             return
 
-        inport = self.mother.inports[pname]
+        inport = self.parent.inports[pname]
         index = self.inports.INDEX.receive_once()
         if index is not None:
             inport = inport[index]
 
-        self.trace_funcs("Accessing input port: {}".format(inport))
+        self.logger.debug("Accessing input port: {}".format(inport))
 
         # FIXME: this is definitely broken:
         if inport.is_static():
@@ -50,7 +50,7 @@ class SubIn(Component):
                 self.outports.OUT.send(p)
 
         # inport.close()
-        self.trace_funcs("Releasing input port: {}".format(inport))
+        self.logger.debug("Releasing input port: {}".format(inport))
 
         inport.component = old_receiver
 
@@ -65,12 +65,12 @@ class SubInSS(Component):
         if self.outports.OUT.is_closed():
             return
 
-        inport = self.mother.inports[pname]
+        inport = self.parent.inports[pname]
         index = self.inports.INDEX.receive_once()
         if index is not None:
             inport = inport[index]
 
-        self.trace_funcs("Accessing input port: {}".format(inport))
+        self.logger.debug("Accessing input port: {}".format(inport))
 
         old_receiver = inport.component
         if inport.is_static():
@@ -85,7 +85,7 @@ class SubInSS(Component):
                     self.outports.OUT.send(p)
                 else:
                     self.drop(p)
-                    self.trace_funcs("open bracket detected")
+                    self.logger.debug("open bracket detected")
                 level += 1
             elif p.get_type() == Packet.CLOSE:
                 if level > 1:
@@ -94,12 +94,12 @@ class SubInSS(Component):
                     level -= 1
                 else:
                     self.drop(p)
-                    self.trace_funcs("close bracket detected")
+                    self.logger.debug("close bracket detected")
                     break
             else:
                 self.outports.OUT.send(p)
 
-        self.trace_funcs("Releasing input port: {}".format(inport))
+        self.logger.debug("Releasing input port: {}".format(inport))
         # inport.set_receiver(old_receiver)
         inport.component = old_receiver
 
@@ -113,18 +113,18 @@ class SubOut(Component):
         if pname is None:
             return
 
-        outport = self.mother.outports[pname]
+        outport = self.parent.outports[pname]
         index = self.inports.INDEX.receive_once()
         if index is not None:
             outport = outport[index]
 
-        self.trace_funcs("Accessing output port: {}".format(outport))
+        self.logger.debug("Accessing output port: {}".format(outport))
         outport.component = self
 
         for p in self.inports.IN:
             outport.send(p)
 
-        self.trace_funcs("Releasing output port: {}".format(outport))
+        self.logger.debug("Releasing output port: {}".format(outport))
 
 
 @inport("IN")
@@ -143,12 +143,12 @@ class SubOutSS(Component):
         if pname is None:
             return
 
-        outport = self.mother.outports[pname]
+        outport = self.parent.outports[pname]
         index = self.inports.INDEX.receive_once()
         if index is not None:
             outport = outport[index]
 
-        self.trace_funcs("Accessing output port: {}".format(outport))
+        self.logger.debug("Accessing output port: {}".format(outport))
         outport.component = self
 
         p = self.create(Packet.OPEN)
@@ -160,12 +160,12 @@ class SubOutSS(Component):
         p = self.create(Packet.CLOSE)
         outport.send(p)
 
-        self.trace_funcs("Releasing output port: {}".format(outport))
+        self.logger.debug("Releasing output port: {}".format(outport))
 
 
 class SubNet(with_metaclass(ABCMeta, Network, Component)):
-    def __init__(self, name, mother):
-        Component.__init__(self, name, mother)
+    def __init__(self, name, parent):
+        Component.__init__(self, name, parent)
         Network.__init__(self)
 
     @abstractmethod
@@ -210,68 +210,52 @@ class SubNet(with_metaclass(ABCMeta, Network, Component)):
             self.connect(internal_port, subcomp.inports.IN)
 
     def execute(self):
-        # FIXME: this, signal_error, and terminate are the only things in
-        # SubNet that require it to be a ComponentRunner.  do we need them?
-        if self.status != StatusValues.ERROR:
+        self.get_components().clear()
+        sub_end_port = None  # self.outports.get("*SUBEND")
+        sub_in_port = None  # self.inports.get("*CONTROL")
+        if sub_in_port is not None:
+            p = sub_in_port.receive()
+            if p is not None:
+                self.drop(p)
 
-            self.trace_funcs("started")
-            self.get_components().clear()
-            sub_end_port = None  # self.outports.get("*SUBEND")
-            sub_in_port = None  # self.inports.get("*CONTROL")
-            if sub_in_port is not None:
-                p = sub_in_port.receive()
-                if p is not None:
-                    self.drop(p)
+        # use fields instead!
+        # tracing = parent.tracing
+        # trace_file_list = parent.trace_file_list
 
-            # use fields instead!
-            # tracing = mother.tracing
-            # trace_file_list = mother.trace_file_list
+        self.define()
+        # FIXME: warn if any external ports have not been connected
 
-            self.define()
-            # FIXME: warn if any external ports have not been connected
+        # if not all(c._check_required_ports() for c in
+        #            self.get_components().values()):
+        #     raise FlowError(
+        #         "One or more mandatory connections have been left unconnected: " + self.get_name())
+        self.initiate()
+        # activate_all()
+        # don't do deadlock testing in subnets - you need to consider
+        # the whole net!
+        self.deadlock_test = False
+        self.wait_for_all()
 
-            # if not all(c._check_required_ports() for c in
-            #            self.get_components().values()):
-            #     raise FlowError(
-            #         "One or more mandatory connections have been left unconnected: " + self.get_name())
-            self.initiate()
-            # activate_all()
-            # don't do deadlock testing in subnets - you need to consider
-            # the whole net!
-            self.deadlock_test = False
-            self.wait_for_all()
+        for ip in self.inports.ports():
+            if ip.is_static():
+                ip.close()
 
-            for ip in self.inports.ports():
-                if ip.is_static():
-                    ip.close()
+        # Iterator allout = (outports.values()).iterator()
+        # while (allout.has_next()):
+        # OutputPort op = (OutputPort) allout.next() op.close()
 
-            # Iterator allout = (outports.values()).iterator()
-            # while (allout.has_next()):
-            # OutputPort op = (OutputPort) allout.next() op.close()
+        # status = StatusValues.TERMINATED # will not be set if never activated
+        # parent.indicate_terminated(self)
+        if sub_end_port is not None:
+            sub_end_port.send(Packet(None, self))
 
-            # status = StatusValues.TERMINATED # will not be set if
-            # never activated
-            # mother.indicate_terminated(self)
-            self.trace_funcs("closed down")
-            if sub_end_port is not None:
-                sub_end_port.send(Packet(None, self))
-
-    # def open_ports(self):
-    #     pass
+    def get_children(self):
+        return list(self.get_components().values())
 
     def signal_error(self, e):
         if self.status != StatusValues.ERROR:
-            self.mother.signal_error(e)
+            self.parent.signal_error(e)
             self.terminate(StatusValues.ERROR)
-
-    def terminate(self, new_status=StatusValues.TERMINATED):
-        """
-        new_status : StatusValues
-        """
-        for comp in self.get_components().values():
-            comp.terminate(new_status)
-        self.status = new_status
-        self.interrupt()
 
 
 @inport("NAME")
@@ -295,15 +279,15 @@ class SubOI(Component):
         i = pname.index_of(":")
         oname = pname.substring(0, i)
         iname = pname.substring(i + 1)
-        extoutport = self.mother.get_outports().get(oname)
-        self.mother.trace_funcs(
+        extoutport = self.parent.get_outports().get(oname)
+        self.parent.trace_funcs(
             self.get_name() + ": Accessing output port: " + extoutport.get_name())
 
         old_sender = extoutport.get_sender()
         extoutport.set_sender(self)
 
-        extinport = self.mother.get_inports().get(iname)
-        self.mother.trace_funcs(
+        extinport = self.parent.get_inports().get(iname)
+        self.parent.trace_funcs(
             self.get_name() + ": Accessing input port: " + extinport.get_name())
         old_receiver = extinport.get_receiver()
         extinport.set_receiver(self)
@@ -315,11 +299,11 @@ class SubOI(Component):
             p.set_owner(self)
             self.outport.send(p)
 
-        self.mother.trace_funcs(
+        self.parent.trace_funcs(
             self.get_name() + ": Releasing input port: " + extinport.get_name())
         extinport.set_receiver(old_receiver)
 
-        self.mother.trace_funcs(
+        self.parent.trace_funcs(
             self.get_name() + ": Releasing output port: " + extoutport.get_name())
         extoutport.set_sender(old_sender)
 

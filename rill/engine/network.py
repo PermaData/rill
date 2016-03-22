@@ -38,26 +38,50 @@ class Network(object):
         self.active = False  # used for deadlock detection
 
         self._components = OrderedDict()
-        # FIXME: get rid of this. using gevent.iwait now
-        self.cdl = None
+
+        # FIXME: not used
         self.timeouts = {}
 
+        # variables with a life-span of one run (set by reset()):
+
+        # FIXME: get rid of this. using gevent.iwait now
+        self.cdl = None
+
+        self.runners = None
         # globals is a global synchronized_map intended for real global use.
         # It is not intended for component-to-component communication.
-        self.globals = {}
-        self.deadlock = False
+        self.globals = None
+        self.deadlock = None
 
         # holds the first error raised
-        self._error = None
-        self._abort = False
+        self.error = None
+        self._abort = None
         # for use by list_comp_status(). here for post-mortem inspection
         self.msgs = None
 
-        self._packet_counts = defaultdict(int)
+        self._packet_counts = None
 
         # FIXME: these were AtomicInteger instances, with built-in locking.
         # might not be safe to make them regular ints
-        self.sends = self.receives = self.creates = self.drops = self.drop_olds = 0
+        self.sends = self.receives = self.creates = self.drops = self.drop_olds = None
+
+    def reset(self):
+        freq = 0.5 if self.deadlock_test else None
+        self.cdl = CountDownLatch(len(self._components), freq)
+
+        self.runners = OrderedDict()
+        self.globals = {}
+        self.deadlock = False
+        self.error = None
+        self._abort = False
+        self.msgs = []
+        self._packet_counts = defaultdict(int)
+
+        self.receives = 0
+        self.sends = 0
+        self.creates = 0
+        self.drops = 0
+        self.drop_olds = 0
 
     def add_component(self, name, comp_type, **initializations):
         """
@@ -185,12 +209,6 @@ class Network(object):
         """
         Execute the network
         """
-        self.receives = 0
-        self.sends = 0
-        self.creates = 0
-        self.drops = 0
-        self.drop_olds = 0
-
         now = time.time()
 
         try:
@@ -214,10 +232,10 @@ class Network(object):
         logger.info(" sends:          %d", self.sends)
         logger.info(" receives:       %d", self.receives)
 
-        if self._error is not None:
+        if self.error is not None:
             # throw the exception which caused the network to stop
             # FIXME: figure out how to re-raise exception with traceback
-            raise_with_traceback(self._error)
+            raise_with_traceback(self.error)
 
     # FIXME: get rid of this:  we don't need the CDL anymore...
     # may be useful if we want to support threading systems other than gevent
@@ -234,32 +252,38 @@ class Network(object):
         Go through components opening ports, and activating those which are
         self-starting (have no input connections)
         """
-        freq = 0.5 if self.deadlock_test else None
-        self.cdl = CountDownLatch(len(self._components), freq)
+        self.reset()
 
         errors = []
-        for comp in self._components.values():
-            errors += comp._open_ports()
+        for name, comp in self._components.items():
+            runner = ComponentRunner(comp)
+            comp._runner = runner
+            self.runners[name] = runner
+            runner.status = StatusValues.NOT_STARTED
+            errors += runner._open_ports()
         if errors:
             for error in errors:
                 logger.error(error)
             raise FlowError("Errors opening ports")
 
         self_starters = []
-        for comp in self._components.values():
-            comp.auto_starting = True
+        for runner in self.runners.values():
+            runner.auto_starting = True
 
-            if not comp._self_starting:
-                for port in comp.inports.ports():
+            if not runner.component._self_starting:
+                for port in runner.inports.ports():
                     if port.is_connected() and not port.is_static():
-                        comp.auto_starting = False
+                        runner.auto_starting = False
                         break
 
-            if comp.auto_starting:
-                self_starters.append(comp)
+            if runner.auto_starting:
+                self_starters.append(runner)
 
-        for comp in self_starters:
-            comp._activate()
+        if not self_starters:
+            raise FlowError("No self-starters found")
+
+        for runner in self_starters:
+            runner._activate()
 
     def interrupt_all(self):
         """
@@ -295,10 +319,10 @@ class Network(object):
         #         break
 
         try:
-            for completed in gevent.iwait(self._components.values()):
+            for completed in gevent.iwait(self.runners.values()):
                 logger.debug("Component completed: {}".format(completed))
                 # if an error occurred, skip deadlock testing
-                if self._error is not None:
+                if self.error is not None:
                     break
 
                 # if the network was aborted, skip deadlock testing
@@ -370,7 +394,7 @@ class Network(object):
         # in case it is not a self.deadlock
 
         terminated = True
-        for comp in self._components.values():
+        for comp in self.runners.values():
             if isinstance(comp, SubNet):
                 # consider components of subnets
                 if not comp.list_comp_status(msgs):
@@ -401,15 +425,17 @@ class Network(object):
     def signal_error(self, e):
         """
         Handle errors in the network.
+
+        Records the error and terminates all components.
         """
         # only react to the first error, the others presumably are inherited
         # errors
-        if self._error is None:
+        if self.error is None:
             assert isinstance(e, Exception)
             # set the error field to let go() raise the exception
-            self._error = e
+            self.error = e
             # terminate the network's components
-            for comp in self._components.values():
+            for comp in self.runners.values():
                 comp.terminate(StatusValues.ERROR)
 
     def terminate(self, new_status=StatusValues.TERMINATED):
@@ -418,7 +444,7 @@ class Network(object):
         """
         # prevent deadlock testing, components will be shut down anyway
         self._abort = True
-        for comp in self._components.values():
+        for comp in self.runners.values():
             comp.terminate(new_status)
 
     # FIXME: consider removing this and the next
@@ -445,7 +471,7 @@ class Network(object):
         -------
         dict of str, ``rill.enginge.component.Component`
         """
-        return dict((c.name, c.component) for c in self._components.items())
+        return self._components
 
     def get_component(self, name):
         """
@@ -456,9 +482,7 @@ class Network(object):
         -------
         ``rill.enginge.component.Component`
         """
-        runner = self._components.get(name)
-        if runner is not None:
-            return runner.component
+        return self._components.get(name)
 
     # FIXME: make private
     def put_component(self, name, comp):
@@ -477,7 +501,7 @@ class Network(object):
         """
         from rill.engine.subnet import SubNet
 
-        old_component_runner = self._components.get(name)
+        old_component = self._components.get(name)
 
         # FIXME: this can be found by the component by calling get_parents(). it doesn't need to be assigned here
         # find the root Network and assign it to comp.network
@@ -485,15 +509,12 @@ class Network(object):
         while True:
             if not isinstance(network, SubNet):
                 break
-            network = network.mother
+            network = network.parent
         comp.network = network
 
-        runner = ComponentRunner(comp)
+        comp._init()
 
-        self._components[name] = runner
+        self._components[name] = comp
 
-        runner.status = StatusValues.NOT_STARTED
-        runner.init()
-
-        if old_component_runner is not None:
-            return old_component_runner.component
+        if old_component is not None:
+            return old_component

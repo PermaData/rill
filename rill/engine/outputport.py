@@ -18,7 +18,7 @@ class OutputInterface(with_metaclass(ABCMeta, PortInterface)):
         -------
         ``rill.engine.component.ComponentRunner``
         """
-        return self.component
+        return self.component._runner
 
     @abstractmethod
     def send(self, packet):
