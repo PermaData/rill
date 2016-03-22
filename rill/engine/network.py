@@ -133,6 +133,7 @@ class Network(object):
         ----------
         arg : ``rill.engine.outputport.OutputPort`` or
             ``rill.engine.inputport.InputPort`` or str
+        kind : {'in', 'out'}
 
         Returns
         -------
@@ -155,9 +156,9 @@ class Network(object):
         if port.is_array():
             port = port.get_element(index, create=True)
 
-        if kind == 'input' and not isinstance(port, InputPort):
+        if kind == 'in' and not isinstance(port, InputPort):
             raise TypeError("Expected InputPort, got {}".format(type(port)))
-        elif kind == 'output' and not isinstance(port, OutputPort):
+        elif kind == 'out' and not isinstance(port, OutputPort):
             raise TypeError("Expected OutputPort, got {}".format(type(port)))
 
         return port
@@ -177,8 +178,8 @@ class Network(object):
         -------
         ``rill.engine.inputport.InputPort``
         """
-        outport = self.get_component_port(sender, kind='output')
-        inport = self.get_component_port(receiver, kind='input')
+        outport = self.get_component_port(sender, kind='out')
+        inport = self.get_component_port(receiver, kind='in')
 
         if connection_capacity is None:
             connection_capacity = self.default_capacity
@@ -197,7 +198,7 @@ class Network(object):
         content : object
         receiver : ``rill.engine.inputport.InputPort`` or str
         """
-        inport = self.get_component_port(receiver, kind='input')
+        inport = self.get_component_port(receiver, kind='in')
 
         if inport.name == 'NULL':
             raise FlowError(

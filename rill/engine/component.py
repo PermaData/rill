@@ -118,6 +118,11 @@ outport._array_port_type = OutputArray
 
 
 class Component(with_metaclass(ABCMeta, object)):
+    _inport_definitions = []
+    _outport_definitions = []
+    _self_starting = False
+    _must_run = False
+
     def __init__(self, name, parent):
         assert name is not None
         self._name = name
@@ -225,7 +230,6 @@ class Component(with_metaclass(ABCMeta, object)):
     def get_name(self):
         """
         Name of the component.
-
         Returns
         -------
         str
@@ -264,7 +268,7 @@ class Component(with_metaclass(ABCMeta, object)):
         Parameters
         ----------
         port_name : str
-        kind : str or None
+        kind : {'in', 'out'} or None
 
         Returns
         -------
@@ -283,12 +287,12 @@ class Component(with_metaclass(ABCMeta, object)):
         if index is not None:
             index = int(index)
 
-        if kind == 'input':
+        if kind == 'in':
             try:
                 port = self.inports[port_name]
             except KeyError as err:
                 raise_from(FlowError(str(err)), err)
-        elif kind == 'output':
+        elif kind == 'out':
             try:
                 port = self.outports[port_name]
             except KeyError as err:

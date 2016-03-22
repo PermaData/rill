@@ -194,7 +194,7 @@ class SubNet(with_metaclass(ABCMeta, Network, Component)):
 
         if isinstance(external_port, InputPort):
             internal_port = self.get_component_port(internal_port,
-                                                    kind='input')
+                                                    kind='in')
             subcomp = self.add_component('_' + external_port.name, SubIn,
                                          NAME=external_port._name)
             if external_port.index is not None:
@@ -202,7 +202,7 @@ class SubNet(with_metaclass(ABCMeta, Network, Component)):
             self.connect(subcomp.outports.OUT, internal_port)
         elif isinstance(external_port, OutputPort):
             internal_port = self.get_component_port(internal_port,
-                                                    kind='output')
+                                                    kind='out')
             subcomp = self.add_component('_' + external_port.name, SubOut,
                                          NAME=external_port._name)
             if external_port.index is not None:
