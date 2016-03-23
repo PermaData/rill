@@ -156,7 +156,7 @@ def test_basic_connections():
     net.add_component("Discard2", Discard)
 
     # ports are stored in the order they are declared
-    assert names(count.outports) == ['OUT', 'COUNT', 'NULL']
+    assert names(count.outports) == ['OUT', 'COUNT']
     assert list(count.outports._ports.keys()) == ['OUT', 'COUNT', 'NULL']
 
     # nothing is connected yet
@@ -198,7 +198,7 @@ def test_fixed_array_connections():
 
     # fixed array ports create their ports immediately
     assert gen.outports.OUT.fixed_size == 2
-    assert names(gen.outports) == ['OUT[0]', 'OUT[1]', 'NULL']
+    assert names(gen.outports) == ['OUT[0]', 'OUT[1]']
     assert list(gen.outports._ports.keys()) == ['OUT', 'NULL']
     assert type(gen.outports['OUT']) is OutputArray
     assert type(dis1.inports['IN']) is InputPort
@@ -209,7 +209,7 @@ def test_fixed_array_connections():
 
     # make a connection
     net.connect("Generate.OUT[1]", "Discard1.IN")
-    assert names(gen.outports) == ['OUT[0]', 'OUT[1]', 'NULL']
+    assert names(gen.outports) == ['OUT[0]', 'OUT[1]']
     assert gen.outports['OUT'][1].is_connected() is True
 
     # uses first unconnected index (index 0)
@@ -241,7 +241,7 @@ def test_array_connections():
 
     # non-fixed array ports delay element creation
     assert gen.outports.OUT.fixed_size is None
-    assert names(gen.outports) == ['NULL']
+    assert names(gen.outports) == []
     assert list(gen.outports._ports.keys()) == ['OUT', 'NULL']
     assert type(gen.outports['OUT']) is OutputArray
     assert type(dis1.inports['IN']) is InputPort
@@ -252,12 +252,12 @@ def test_array_connections():
 
     # make a connection
     net.connect("Generate.OUT[1]", "Discard1.IN")
-    assert names(gen.outports) == ['OUT[1]', 'NULL']
+    assert names(gen.outports) == ['OUT[1]']
     assert gen.outports['OUT'][1].is_connected() is True
 
     # uses first unused index (index 0)
     net.connect("Generate.OUT", "Discard2.IN")
-    assert names(gen.outports) == ['OUT[0]', 'OUT[1]', 'NULL']
+    assert names(gen.outports) == ['OUT[0]', 'OUT[1]']
     assert gen.outports['OUT'][0].is_connected() is True
 
     assert type(gen.outports['OUT']) is OutputArray
@@ -294,7 +294,7 @@ def test_required_array_error():
     assert gen.outports['OUT'].optional is False
     net.add_component("Discard1", Discard)
     net.connect("Generate.OUT[0]", "Discard1.IN")
-    assert names(gen.outports) == ['OUT[0]', 'OUT[1]', 'NULL']
+    assert names(gen.outports) == ['OUT[0]', 'OUT[1]']
 
     gen.init()
     with pytest.raises(FlowError):

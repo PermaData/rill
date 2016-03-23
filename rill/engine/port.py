@@ -390,7 +390,7 @@ class PortCollection(PortContainerMixin):
                                   in flatten_collections(ports))
         self.check_port_types()
 
-    def root_ports(self):
+    def root_ports(self, include_null=False):
         """
         Return the root ports, including array ports but not their children.
 
@@ -399,7 +399,10 @@ class PortCollection(PortContainerMixin):
         ``Port`` or ``ArrayPort``
         """
         # cast to list for python 3 compat
-        return list(self._ports.values())
+        ports = list(self._ports.values())
+        if not include_null:
+            ports = [p for p in ports if p.name != 'NULL']
+        return ports
 
     def iter_ports(self):
         """
@@ -410,7 +413,7 @@ class PortCollection(PortContainerMixin):
         ``rill.engine.inputport.InputPort`` or
         ``rill.engine.outputport.OutputPort``
         """
-        for port in self._ports.values():
+        for port in self.root_ports():
             if port.is_array():
                 for elem in port.ports():
                     yield elem
@@ -430,10 +433,10 @@ class PortCollection(PortContainerMixin):
             raise_from(KeyError("Port {}.{} does not exist".format(
                 self.component, item)), e)
 
-    def _pop_null_port(self):
-        # special handling of NULL port. this port is removed from the port map
-        # before a component's execute method is run, so they are not publicly
-        # available
-        port = self._ports.pop('NULL')
-        if port.is_connected():
-            return port
+    # def _pop_null_port(self):
+    #     # special handling of NULL port. this port is removed from the port map
+    #     # before a component's execute method is run, so they are not publicly
+    #     # available
+    #     port = self._ports.pop('NULL')
+    #     if port.is_connected():
+    #         return port

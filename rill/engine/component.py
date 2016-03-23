@@ -760,11 +760,11 @@ class ComponentRunner(Greenlet):
 
             self.status = StatusValues.ACTIVE
             self.trace_funcs("Started")
-            self._null_input = self.inports._pop_null_port()
-            self._null_output = self.outports._pop_null_port()
-
-            if self._null_input is not None:
+            if self.inports.NULL.is_connected():
+                self._null_input = self.inports.NULL
                 self._null_input.receive_once()
+            if self.outports.NULL.is_connected():
+                self._null_output = self.outports.NULL
 
             if self._self_starting:
                 self.auto_starting = True
