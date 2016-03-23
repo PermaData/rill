@@ -261,6 +261,10 @@ class InitializationConnection(ConnectionInterface):
         self._content = content
         self._is_closed = True
 
+    def __repr__(self):
+        return '%s(%r)' % (self.__class__.__name__,
+                           self.inport.get_full_name())
+
     def count(self):
         return 0 if self.is_empty() else 1
 
@@ -329,11 +333,15 @@ class Connection(ConnectionInterface):
         self.drop_oldest = False
         self.count_packets = False
 
+    def __repr__(self):
+        return '%s(%r)' % (self.__class__.__name__,
+                           self.inport.get_full_name())
+
     def count(self):
         return len(self._queue)
 
     def open(self):
-        pass
+        self._sender_count = len(self.outports)
 
     def close(self):
         """
@@ -416,7 +424,6 @@ class Connection(ConnectionInterface):
         self.inport = inport
         self.outports.add(outport)
         outport._connection = self
-        self._sender_count += 1
 
     def is_closed(self):
         """

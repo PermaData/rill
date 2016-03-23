@@ -134,6 +134,7 @@ class Component(with_metaclass(ABCMeta, object)):
         # the component's immediate network parent: used for subnet support
         self.parent = parent
         # the root network
+        # FIXME: this is set by the Network, but should be set by the component using get_parents()
         self.network = None
 
         # set by the network
@@ -195,13 +196,14 @@ class Component(with_metaclass(ABCMeta, object)):
         self.outports = OutputCollection(
             self, [self._create_port(p) for p in outports + [outport('NULL')]])
 
+        # give custom component classes a chance to initialize themselves
         self.init()
 
     def get_parents(self):
         """
         Returns
         -------
-        list of ``rill.engine.network.Network``
+        list of ``rill.engine.network.SubNet``
         """
         from rill.engine.subnet import SubNet
         if self._parents is None:
@@ -230,6 +232,7 @@ class Component(with_metaclass(ABCMeta, object)):
     def get_name(self):
         """
         Name of the component.
+
         Returns
         -------
         str
@@ -524,6 +527,8 @@ class Component(with_metaclass(ABCMeta, object)):
 
 
 class ComponentRunner(Greenlet):
+    logger = Adapter(logging.getLogger("component.runner"), {})
+
     def __init__(self, component):
         """
         Parameters
@@ -555,8 +560,6 @@ class ComponentRunner(Greenlet):
 
         self.ignore_packet_count_error = False
         self._status = StatusValues.NOT_STARTED
-
-        self.logger = Adapter(logging.getLogger("component.runner"), {})
 
     def __str__(self):
         return self.component.get_full_name()
@@ -604,9 +607,9 @@ class ComponentRunner(Greenlet):
         list of Exception
         """
         errors = []
-        for port in self.inports.root_ports() + self.outports.root_ports():
+        for container in [self.inports, self.outports]:
             try:
-                port.open()
+                container.open()
             except FlowError as e:
                 errors.append(str(e))
         return errors
@@ -615,8 +618,8 @@ class ComponentRunner(Greenlet):
         """
         Close all ports.
         """
-        for port in self.outports.root_ports() + self.inports.root_ports():
-            port.close()
+        self.outports.close()
+        self.inports.close()
 
     # Statuses --
 
@@ -671,7 +674,7 @@ class ComponentRunner(Greenlet):
             "ERROR")
         """
         for child in self.component.get_children():
-            child.terminate(new_status)
+            child._runner.terminate(new_status)
         self.logger.debug("Terminated", component=self)
         self.status = new_status
         # self.parent.indicate_terminated(self)

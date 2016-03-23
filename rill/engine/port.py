@@ -56,6 +56,16 @@ class BasePort(with_metaclass(ABCMeta, object)):
 
     def __init__(self, component, name, index=None, optional=True, type=None,
                  description=None):
+        """
+        Parameters
+        ----------
+        component : ``rill.engine.component.ComponentRunner``
+        name : str
+        index : int or None
+        optional : bool
+        type : ``rill.engine.types.TypeHandler``
+        description : str
+        """
         assert name is not None
         assert not isinstance(component, str)
         self.component = component
@@ -199,20 +209,6 @@ class PortContainerMixin(with_metaclass(ABCMeta, object)):
         list of ``rill.engine.outputport.OutputPort``
         """
         return list(self.iter_ports())
-
-    def open(self):
-        """
-        Open all the ports held by this container
-        """
-        for port in self.ports():
-            port.open()
-
-    def close(self):
-        """
-        Close all the ports held by this container
-        """
-        for port in self.ports():
-            port.close()
 
     def is_closed(self):
         """
@@ -366,7 +362,12 @@ class ArrayPort(BasePort, PortContainerMixin):
                     "Required {} {} has missing elements: {}".format(
                         self.port_class.__name__, self, ', '.join(missing)))
 
-        super(ArrayPort, self).open()
+        for port in self.ports():
+            port.open()
+
+    def close(self):
+        for port in self.ports():
+            port.close()
 
     def is_connected(self):
         return False
@@ -419,6 +420,20 @@ class PortCollection(PortContainerMixin):
                     yield elem
             else:
                 yield port
+
+    def open(self):
+        """
+        Open all the ports held by this container
+        """
+        for port in self.root_ports(include_null=True):
+            port.open()
+
+    def close(self):
+        """
+        Close all the ports held by this container
+        """
+        for port in self.root_ports(include_null=True):
+            port.close()
 
     def __getattr__(self, item):
         try:

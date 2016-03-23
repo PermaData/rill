@@ -40,6 +40,16 @@ def names(ports):
     return [x.name for x in ports.ports()]
 
 
+def run(network, *pairs):
+    network.go()
+    for real, ref in pairs:
+        assert real.values == ref
+        real.values = []
+    network.go()
+    for real, ref in pairs:
+        assert real.values == ref
+
+
 @component(pass_context=True)
 @inport("IN")
 @outport("OUT")
@@ -99,8 +109,7 @@ def test_aggregation(net, discard):
     net.connect("Generate.OUT", "Counter.IN")
     net.connect("Counter.COUNT", "Discard.IN")
     net.initialize(5, "Generate.COUNT")
-    net.go()
-    assert dis.values == [5]
+    run(net, (dis, [5]))
 
 
 def test_static_type_validation():
@@ -126,12 +135,13 @@ def test_multiple_inputs(net):
     net.connect("PrefixA.OUT", "Discard.IN")
     net.connect("PrefixB.OUT", "Discard.IN")
     net.connect("PrefixC.OUT", "Discard.IN")
-    net.go()
-    assert dis.values == [
-        'A000005', 'A000004', 'A000003', 'A000002', 'A000001',
-        'B000005', 'B000004', 'B000003', 'B000002', 'B000001',
-        'C000005', 'C000004', 'C000003', 'C000002', 'C000001',
-    ]
+    run(net,
+        (dis,
+         [
+          'A000005', 'A000004', 'A000003', 'A000002', 'A000001',
+          'B000005', 'B000004', 'B000003', 'B000002', 'B000001',
+          'C000005', 'C000004', 'C000003', 'C000002', 'C000001',
+         ]))
 
 
 def test_intermediate_non_looper(net, discard):
@@ -145,8 +155,8 @@ def test_intermediate_non_looper(net, discard):
     # Passthru is a non-looper
     net.connect("Passthru.OUT", "Discard.IN")
     net.initialize(5, "Generate.COUNT")
-    net.go()
-    assert dis.values == ['000005', '000004', '000003', '000002', '000001']
+    run(net,
+        (dis, ['000005', '000004', '000003', '000002', '000001']))
 
 
 def test_basic_connections():
