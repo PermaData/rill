@@ -6,7 +6,7 @@ from future.utils import with_metaclass
 from rill.engine.status import StatusValues
 from rill.engine.port import Port, ArrayPort, PortCollection, PortInterface
 from rill.engine.exceptions import FlowError
-from rill.engine.utils import NOT_SET
+from rill.utils import NOT_SET
 
 import gevent
 import gevent.event

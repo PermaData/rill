@@ -1,9 +1,11 @@
-from rill.engine.utils import Annotation, FlagAnnotation, NOT_SET
+from rill.utils import Annotation, FlagAnnotation, NOT_SET
 
 try:
     basestring  # PY2
 except NameError:
     basestring = str  # PY3
+
+__all__ = ['inport', 'outport', 'must_run', 'self_starting', 'component']
 
 
 class _Port(Annotation):

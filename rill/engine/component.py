@@ -17,7 +17,7 @@ from rill.engine.inputport import InputPort, InputArray, InputCollection, \
     Connection
 from rill.engine.packet import Packet, Chain
 from rill.engine.exceptions import FlowError, ComponentException
-from rill.engine.decorators import *
+from rill.decorators import *
 
 PORT_NAME_REG = r"^([a-zA-Z][_a-zA-Z0-9]*)(?:\[(\d+)\])?$"
 
@@ -104,8 +104,8 @@ class Adapter(logging.LoggerAdapter):
         return message, kwargs
 
 
-_logger = logging.getLogger()
-# _logger.set_level(logging.INFO)
+_logger = logging.getLogger(__name__)
+_logger.setLevel(logging.DEBUG)
 logger = Adapter(_logger, {})
 
 # FIXME: put these on InputInterface

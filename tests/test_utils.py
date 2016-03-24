@@ -1,4 +1,4 @@
-from rill.engine.utils import Annotation, FlagAnnotation
+from rill.utils import Annotation, FlagAnnotation
 import pytest
 
 
