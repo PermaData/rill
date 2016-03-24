@@ -182,6 +182,12 @@ class InputPort(Port, InputInterface):
         static_value = self.validate_packet_contents(static_value)
         self._connection = InitializationConnection(static_value, self)
 
+    def uninitialize(self):
+        if not self.is_static():
+            raise FlowError(
+                "Port is not initialized: {}".format(self))
+        self._connection = None
+
     def upstream_count(self):
         """
         Get the upstream packet count.

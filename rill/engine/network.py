@@ -206,6 +206,22 @@ class Network(object):
 
         inport.initialize(content)
 
+    def uninitialize(self, receiver):
+        """
+        Initialize an inport port with a value
+
+        Parameters
+        ----------
+        receiver : ``rill.engine.inputport.InputPort`` or str
+        """
+        inport = self.get_component_port(receiver, kind='in')
+
+        if inport.name == 'NULL':
+            raise FlowError(
+                "Cannot uninitialize NULL port: {}".format(inport))
+
+        inport.uninitialize()
+
     def go(self):
         """
         Execute the network
