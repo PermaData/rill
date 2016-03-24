@@ -9,6 +9,7 @@ _type_handlers = []
 
 
 def register(cls):
+    # LIFO
     _type_handlers.insert(0, cls)
 
 
@@ -80,6 +81,11 @@ try:
 
     class SchematicsTypeHandler(TypeHandler):
 
+        def __init__(self, type_def):
+            if inspect.isclass(type_def):
+                type_def = type_def()
+            super(SchematicsTypeHandler, self).__init__(type_def)
+
         def validate(self, value):
             try:
                 return self.type_def.to_native(value)
@@ -88,8 +94,10 @@ try:
 
         @classmethod
         def claim_type_def(cls, type_def):
-            return isinstance(type_def, (schematics.types.BaseType,
-                                         schematics.models.Model))
+            bases = (schematics.types.BaseType, schematics.models.Model)
+            return (isinstance(type_def, bases) or
+                    (inspect.isclass(type_def) and
+                     issubclass(type_def, bases)))
 
 
     register(SchematicsTypeHandler)
