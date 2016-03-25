@@ -1,4 +1,4 @@
-from weakref import WeakKeyDictionary
+from weakref import WeakSet
 
 NOT_SET = object()
 
@@ -36,9 +36,10 @@ class Annotation(object):
         # this ensures that the _seen attribute is stored on each leaf
         # class
         if not hasattr(cls, '_seen'):
-            # use a WeakSet instead of simply checking attribute existence
-            # in case the object defines a default value for our storage
-            # attribute which should be overridden (e.g. on a sub-class)
+            # for the multi feature, we need to know if this object has already
+            # been annotated by this class. we can't simply check the existence
+            # of cls.attribute on the object because it may already exist there
+            # (i.e. as a default value which we should override).
             cls._seen = WeakSet()
         seen = obj in cls._seen
         if not seen:
