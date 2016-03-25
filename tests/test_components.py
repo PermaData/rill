@@ -17,7 +17,7 @@ from rill.components.files import ReadLines, WriteLines, Write
 from rill.components.text import Prefix, LineToWords, LowerCase, StartsWith, WordsToLine
 
 from rill.engine.component import Component
-from rill.engine.decorators import inport, outport, component
+from rill.decorators import inport, outport, component
 
 
 # TODO
