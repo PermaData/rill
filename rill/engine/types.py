@@ -62,10 +62,15 @@ class TypeHandler(with_metaclass(ABCMeta, object)):
 
 class BasicTypeHandler(TypeHandler):
     def validate(self, value):
-        if not isinstance(value, self.type_def):
+        if isinstance(value, self.type_def):
+            return value
+        try:
+            # FIXME: we probably want a list of allowable types to cast from
+            return self.type_def(value)
+        except Exception as err:
             raise PacketValidationError(
-                "data is type {}: expected {}".format(
-                    value.__class__.__name__, self.type_def.__name__))
+                "Data is type {}: expected {}. Error while casting: {}".format(
+                    value.__class__.__name__, self.type_def.__name__, err))
 
     @classmethod
     def claim_type_def(cls, type_def):

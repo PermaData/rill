@@ -17,6 +17,7 @@ import gevent
 import geventwebsocket
 
 from rill.engine.component import Component
+from rill.engine.inputport import Connection
 from rill.engine.network import Network
 from rill.engine.subnet import SubNet
 
@@ -32,10 +33,16 @@ def short_class_name(klass):
     return klass.__name__
 
 
+def obvserve(f, callback):
+    def wrapper(*args, **kwargs):
+        callback(*args, **kwargs)
+        return f(*args, **kwargs)
+    return wrapper
+
+
 class Runtime(object):
     """
-    Description of the runtime goes here.
-    This will appear in the FlowHub registry description.
+    Rill runtime for python
     """
     PROTOCOL_VERSION = '0.5'
 
@@ -62,7 +69,7 @@ class Runtime(object):
         self.log = logging.getLogger('%s.%s' % (self.__class__.__module__,
                                                 self.__class__.__name__))
 
-        self._components = {}  # Component metadata, keyed by component name
+        self._component_types = {}  # Component metadata, keyed by component name
         self._graphs = {}  # Graph instances, keyed by graph ID
         self._executors = {}  # GraphExecutor instances, keyed by graph ID
 
@@ -107,9 +114,11 @@ class Runtime(object):
             #'graph': ''
         }
 
+    # Components --
+
     def get_all_component_specs(self):
         specs = {}
-        for component_name, component_options in self._components.iteritems():
+        for component_name, component_options in self._component_types.iteritems():
             specs[component_name] = component_options['spec']
 
         return specs
@@ -134,13 +143,13 @@ class Runtime(object):
         long_name = long_class_name(component_class)
         short_name = short_class_name(component_class)
 
-        if long_name in self._components and not overwrite:
+        if long_name in self._component_types and not overwrite:
             raise ValueError("Component {0} already registered".format(
                 long_name))
 
         self.log.debug('Registering component: {0}'.format(long_name))
 
-        self._components[long_name] = {
+        self._component_types[long_name] = {
             'class': component_class,
             'spec': self._create_component_spec(long_name, component_class)
         }
@@ -148,10 +157,12 @@ class Runtime(object):
     def register_module(self, module, overwrite=False):
         """
 
-        :param module:
-        :param collection:
-        :param overwrite:
+        Parameters
+        ----------
+        module : str or `ModuleType`
+        overwrite : bool
         """
+        # FIXME: py3
         if isinstance(module, basestring):
             module = __import__(module)
 
@@ -212,10 +223,20 @@ class Runtime(object):
             ]
         }
 
-    def _get_port(self, graph, data, kind):
-        return graph.get_component_port((data['node'], data['port']),
-                                        index=data.get('index'),
-                                        kind=kind)
+    def get_source_code(self, component_name):
+        # FIXME:
+        component = None
+        for graph in self._graphs.values():
+            component = self._find_component_by_name(graph, component_name)
+            if component is not None:
+                break
+
+        if component is None:
+            raise ValueError('No component named {}'.format(component_name))
+
+        return inspect.getsource(component.__class__)
+
+    # Network --
 
     def get_status(self, graph_id):
         started = graph_id in self._executors
@@ -233,6 +254,10 @@ class Runtime(object):
 
         executor = gevent.Greenlet(graph.go)
         # FIXME: should we delete the executor from self._executors on finish?
+        # this has an impact on the result returned from get_status().  Leaving
+        # it means that after completion it will be started:True, running:False
+        # until stop() is triggered, at which point it will be started:False,
+        # running:False
         executor.link(lambda g: done_callback())
         self._executors[graph_id] = executor
         executor.start()
@@ -253,6 +278,16 @@ class Runtime(object):
         executor.join()
         del self._executors[graph_id]
 
+    def set_debug(self, graph_id, debug):
+        self._create_or_get_graph(graph_id).debug = debug
+
+    # Graphs --
+
+    def _get_port(self, graph, data, kind):
+        return graph.get_component_port((data['node'], data['port']),
+                                        index=data.get('index'),
+                                        kind=kind)
+
     def _create_or_get_graph(self, graph_id):
         """
         Parameters
@@ -270,18 +305,6 @@ class Runtime(object):
 
         return self._graphs[graph_id]
 
-    def get_source_code(self, component_name):
-        component = None
-        for graph in self._graphs.values():
-            component = self._find_component_by_name(graph, component_name)
-            if component is not None:
-                break
-
-        if component is None:
-            raise ValueError('No component named {}'.format(component_name))
-
-        return inspect.getsource(component.__class__)
-
     def new_graph(self, graph_id):
         """
         Create a new graph.
@@ -298,7 +321,7 @@ class Runtime(object):
 
         graph = self._create_or_get_graph(graph_id)
 
-        component_class = self._components[component_id]['class']
+        component_class = self._component_types[component_id]['class']
         graph.add_component(node_id, component_class)
 
     def remove_node(self, graph_id, node_id):
@@ -391,7 +414,11 @@ def create_websocket_application(runtime):
 
             self.runtime = runtime
 
-        ### WebSocket transport handling ###
+            Connection.send = obvserve(Connection.send,
+                                       self.send_connection_data)
+
+        # WebSocket transport handling --
+
         @staticmethod
         def protocol_name():
             """
@@ -442,27 +469,58 @@ def create_websocket_application(runtime):
             pprint.pprint(message)
             self.ws.send(json.dumps(message))
 
-        ### Protocol send/responses ###
+        def send_connection_data(self, connection, packet, outport):
+            inport = connection.inport
+            payload = {
+                'id': '{} {} -> {} {}'.format(
+                    outport.component.get_name(),
+                    outport._name,
+                    inport._name,
+                    inport.component.get_name(),
+                ),
+                'graph': 'main',  # FIXME
+                'src': {
+                    'node': outport.component.get_name(),
+                    'port': outport._name
+                },
+                'tgt': {
+                    'node': inport.component.get_name(),
+                    'port': inport._name
+                },
+                'data': packet.get_contents()
+            }
+            self.send('network', 'data', payload)
+        # Protocol send/responses --
+
         def handle_runtime(self, command, payload):
-            # Absolute minimum: be able to tell UI info about runtime and supported capabilities
+            # tell UI info about runtime and supported capabilities
             if command == 'getruntime':
                 payload = self.runtime.get_runtime_meta()
                 # self.log.debug(json.dumps(payload, indent=4))
                 self.send('runtime', 'runtime', payload)
 
-            # network:packet, allows sending data in/out to networks in this runtime
-            # can be used to represent the runtime as a FBP component in bigger system "remote subgraph"
+            # network:packet, allows sending data in/out to networks in this
+            # runtime can be used to represent the runtime as a FBP component
+            # in bigger system "remote subgraph"
             elif command == 'packet':
-                # We don't actually run anything, just echo input back and pretend it came from "out"
+                # We don't actually run anything, just echo input back and
+                # pretend it came from "out"
                 payload['port'] = 'out'
                 self.send('runtime', 'packet', payload)
 
             else:
-                self.log.warn("Unknown command '%s' for protocol '%s' " % (command, 'runtime'))
+                self.log.warn("Unknown command '%s' for protocol '%s' " %
+                              (command, 'runtime'))
 
         def handle_component(self, command, payload):
-            # Practical minimum: be able to tell UI which components are available
-            # This allows them to be listed, added, removed and connected together in the UI
+            """
+            Provide information about components.
+
+            Parameters
+            ----------
+            command : str
+            payload : dict
+            """
             if command == 'list':
                 specs = self.runtime.get_all_component_specs()
                 for component_name, component_data in specs.iteritems():
@@ -472,6 +530,7 @@ def create_websocket_application(runtime):
                 self.send('component', 'componentsready', None)
             # Get source code for component
             elif command == 'getsource':
+                raise TypeError("HEREREREREHRERERE")
                 component_name = payload['name']
                 source_code = self.runtime.get_source_code(component_name)
 
@@ -487,12 +546,21 @@ def create_websocket_application(runtime):
                 }
                 self.send('component', 'source', payload)
             else:
-                self.log.warn("Unknown command '%s' for protocol '%s' " % (command, 'component'))
+                self.log.warn("Unknown command '%s' for protocol '%s' " %
+                              (command, 'component'))
 
         def handle_graph(self, command, payload):
-            # Modify our graph representation to match that of the UI/client
-            # Note: if it is possible for the graph state to be changed by other things than the client
-            # you must send a message on the same format, informing the client about the change
+            """
+            Modify our graph representation to match that of the UI/client
+
+            Parameters
+            ----------
+            command : str
+            payload : dict
+            """
+            # Note: if it is possible for the graph state to be changed by
+            # other things than the client you must send a message on the
+            # same format, informing the client about the change
             # Normally done using signals,observer-pattern or similar
 
             send_ack = True
@@ -527,7 +595,8 @@ def create_websocket_application(runtime):
                 pass
             else:
                 send_ack = False
-                self.log.warn("Unknown command '%s' for protocol '%s' " % (command, 'graph'))
+                self.log.warn("Unknown command '%s' for protocol '%s'" %
+                              (command, 'graph'))
 
             # For any message we respected, send same in return as
             # acknowledgement
@@ -535,15 +604,34 @@ def create_websocket_application(runtime):
                 self.send('graph', command, payload)
 
         def handle_network(self, command, payload):
+            """
+            Start / Stop and provide status messages about the network.
+
+            Parameters
+            ----------
+            command : str
+            payload : dict
+            """
             def send_status(cmd, g):
                 started, running = self.runtime.get_status(g)
                 payload = {
                     'graph': g,
                     'started': started,
                     'running': running,
+                    'debug': True,
                 }
                 self.send('network', cmd, payload)
-                self.send('network', 'output', {'message': 'TEST!'})
+                # FIXME: hook up component logger to and output handler
+                # self.send('network', 'output', {'message': 'TEST!'})
+                # if started and running:
+                #     payload = {u'component': u'tests.components/GenerateTestData',
+                #   u'graph': u'575ed4de-39c9-3698-a4be-f5395d9eda2f',
+                #   u'id': u'tests.components/GenerateTestData_zoa2g',
+                #   u'metadata': {u'label': u'GenerateTestData',
+                #                 u'x': 334,
+                #                 u'y': 100},
+                #   u'secret': u'9129923'}
+                #     self.send('graph', 'addnode', payload)
 
             graph_id = payload.get('graph', None)
             if command == 'getstatus':
@@ -555,8 +643,12 @@ def create_websocket_application(runtime):
             elif command == 'stop':
                 self.runtime.stop(graph_id)
                 send_status('stopped', graph_id)
+            elif command == 'debug':
+                self.runtime.set_debug(graph_id, payload['enable'])
+                self.send('network', 'debug', payload)
             else:
-                self.log.warn("Unknown command '%s' for protocol '%s'" % (command, 'network'))
+                self.log.warn("Unknown command '%s' for protocol '%s'" %
+                              (command, 'network'))
 
     return WebSocketRuntimeAdapterApplication
 
@@ -699,9 +791,13 @@ def main():
                  'generated: {}'.format(runtime_id))
 
     runtime = Runtime()
-    import rill.components.basic
+
+    # FIXME: remove hard-wired imports
     import tests.components
+    import rill.components.basic
+    import rill.components.timing
     runtime.register_module(rill.components.basic)
+    runtime.register_module(rill.components.timing)
     runtime.register_module(tests.components)
 
     def runtime_application_task():
