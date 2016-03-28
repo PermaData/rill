@@ -53,8 +53,8 @@ def LoadBalance(IN, OUT):
         if substream_level == 0:
             # find output port with the least number of downstream packets
             active_outport = outports.next_port()
-        if p.get_type() == Packet.OPEN:
+        if p.get_type() == Packet.Type.OPEN:
             substream_level += 1
-        elif p.get_type() == Packet.CLOSE:
+        elif p.get_type() == Packet.Type.CLOSE:
             substream_level -= 1
         active_outport.send(p)

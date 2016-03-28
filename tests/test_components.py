@@ -1,5 +1,7 @@
 import pytest
 
+import gevent.monkey
+
 from rill.engine.exceptions import FlowError
 from rill.engine.network import Network
 from rill.engine.outputport import OutputPort, OutputArray
@@ -14,11 +16,18 @@ from rill.components.merge import Group
 from rill.components.split import RoundRobinSplit, Replicate
 from rill.components.math import Add
 from rill.components.files import ReadLines, WriteLines, Write
+from rill.components.timing import SlowPass
 from rill.components.text import Prefix, LineToWords, LowerCase, StartsWith, WordsToLine
 
-from rill.engine.component import Component
+from rill.engine.component import Component, ComponentRunner
 from rill.decorators import inport, outport, component
 
+import logging
+ComponentRunner.logger.logger.setLevel(logging.DEBUG)
+
+is_patched = gevent.monkey.is_module_patched("sys")
+requires_patch = pytest.mark.skipif(not is_patched,
+                                    reason='requires patched gevent')
 
 # TODO
 # - test inport closing while it is waiting in a `while self.is_empty()` loop
@@ -96,7 +105,7 @@ def net(request):
     return Network(**request.param)
 
 
-@pytest.fixture(params=['looper', 'nonlooper'])
+@pytest.fixture(params=['looper', 'nonlooper'] if is_patched else ['looper'])
 def discard(request):
     return DiscardLooper if request.param == 'looper' else Discard
 
@@ -112,7 +121,63 @@ def test_aggregation(net, discard):
     run(net, (dis, [5]))
 
 
+@requires_patch
+def test_pickle(net):
+    net.add_component("Generate", GenerateTestData, COUNT=5)
+    passthru = net.add_component("Pass", SlowPass, DELAY=0.1)
+    count = net.add_component("Counter", Counter)
+    dis1 = net.add_component("Discard1", Discard)
+    dis2 = net.add_component("Discard2", Discard)
+
+    net.connect("Generate.OUT", "Pass.IN")
+    net.connect("Pass.OUT", "Counter.IN")
+    net.connect("Counter.COUNT", "Discard1.IN")
+    net.connect("Counter.OUT", "Discard2.IN")
+
+    netrunner = gevent.spawn(net.go)
+    try:
+        with gevent.Timeout(.35) as timeout:
+            gevent.wait([netrunner])
+    except gevent.Timeout:
+        print(count.execute)
+
+    assert count.count == 4
+    assert dis2.values == ['000005', '000004', '000003', '000002']
+
+    import pickle
+    # dump before terminating to get the runner statuses
+    data = pickle.dumps(net)
+    # FIXME: do we need to auto-terminate inside wait_for_all if there is an error?
+    net.terminate()
+    net.wait_for_all()
+    # gevent.wait([netrunner])  # this causes more packets to be sent. no good.
+    net2 = pickle.loads(data)
+    assert net2.component('Counter').count == 4
+    assert net2.component('Discard2').values == ['000005', '000004', '000003', '000002']
+    net2.go(resume=True)
+    assert net2.component('Counter').count == 5
+    assert net2.component('Discard2').values == ['000005', '000004', '000003', '000002', '000001']
+
+    # FIXME: test the case where a packet is lost due to being shut-down
+    # packet counting should catch it.  to test, use this component, which
+    # can be killed while it sleeps holding a packet:
+    # @component
+    # @outport("OUT")
+    # @inport("IN")
+    # @inport("DELAY", type=float, optional=False)
+    # def SlowPass(IN, DELAY, OUT):
+    #     """
+    #     Pass a stream of packets to an output stream with a delay between packets
+    #     """
+    #     delay = DELAY.receive_once()
+    #     for p in IN:
+    #         time.sleep(delay)
+    #         OUT.send(p)
+
+
 def test_static_type_validation():
+    """When initializing a port to a static value, the type is immediately
+    validated"""
     net = Network()
 
     with pytest.raises(FlowError):
@@ -120,6 +185,7 @@ def test_static_type_validation():
 
 
 @pytest.mark.xfail(reason='order is ACB instead of ABC')
+@requires_patch
 def test_multiple_inputs(net):
     net.add_component("GenerateA", GenerateTestData, COUNT=5)
     net.add_component("PrefixA", Prefix, PRE='A')
@@ -442,6 +508,7 @@ def test_inport_closed_error(net, discard):
     assert dis.values == ['000005']
 
 
+@requires_patch
 def test_subnet_with_substreams(net, discard):
     # tracing = True
     net.add_component("Generate", GenSS, COUNT=15)

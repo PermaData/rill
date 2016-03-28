@@ -1,6 +1,7 @@
 from weakref import WeakSet
 
-NOT_SET = object()
+class NOT_SET(object):
+    pass
 
 
 class Annotation(object):

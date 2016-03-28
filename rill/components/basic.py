@@ -9,11 +9,11 @@ def Output(IN, OUT):
     """displays the content of incoming IPs open and close brackets"""
     level = 1
     for p in IN:
-        if p.get_type() == Packet.OPEN:
+        if p.get_type() == Packet.Type.OPEN:
             logger.info("OPEN({})".format(level))
             level += 1
             break
-        elif p.get_type() == Packet.CLOSE:
+        elif p.get_type() == Packet.Type.CLOSE:
             level -= 1
             logger.info("CLOSE({})".format(level))
             break
@@ -104,20 +104,35 @@ def Discard(IN):
     IN.receive().drop()
 
 
-@component
+# @component
 @inport("IN", description="Incoming stream")
 @outport("OUT", description="Stream being passed through", optional=True)
 @outport("COUNT", description="Count packet to be output", type=int)
 @must_run
-def Counter(IN, OUT, COUNT):
+# def Counter(IN, OUT, COUNT):
+#     """Component to count a stream of packets, and output the result on the
+#     COUNT port.
+#     """
+#     count = 0
+#     for p in IN.iter_packets():
+#         count += 1
+#         OUT.send(p)
+#     COUNT.send(count)
+class Counter(Component):
     """Component to count a stream of packets, and output the result on the
     COUNT port.
     """
-    count = 0
-    for p in IN:
-        count += 1
-        OUT.send(p)
-    COUNT.send(count)
+    def execute(self):
+        # FIXME: is it possible for a looper to be terminated and then
+        # reactivated? if so, self.count will be wrong.  it is designed this
+        # way to allow pause/resume (i.e. fault-tolerance)
+        for p in self.inports.IN.iter_packets():
+            self.count += 1
+            self.outports.OUT.send(p)
+        self.outports.COUNT.send(self.count)
+
+    def init(self):
+        self.count = 0
 
 
 @component

@@ -390,6 +390,8 @@ class PortCollection(PortContainerMixin):
         self._ports = OrderedDict((p.name, p) for p
                                   in flatten_collections(ports))
         self.check_port_types()
+        for pname, port in self._ports.items():
+            setattr(self, pname, port)
 
     def root_ports(self, include_null=False):
         """
@@ -434,12 +436,6 @@ class PortCollection(PortContainerMixin):
         """
         for port in self.root_ports(include_null=True):
             port.close()
-
-    def __getattr__(self, item):
-        try:
-            return self._ports[item]
-        except KeyError:
-            raise AttributeError(item)
 
     def __getitem__(self, item):
         try:

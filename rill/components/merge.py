@@ -24,9 +24,9 @@ def SubstreamSensitiveMerge(IN, OUT):
                 # all elements are drained
                 return
             p = inport.receive()
-        if p.get_type() == Packet.OPEN:
+        if p.get_type() == Packet.Type.OPEN:
             substream_level += 1
-        elif p.get_type() == Packet.CLOSE:
+        elif p.get_type() == Packet.Type.CLOSE:
             substream_level -= 1
         OUT.send(p)
 

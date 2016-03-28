@@ -11,8 +11,6 @@ from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import Connection, InputPort, InputArray
 from rill.engine.utils import CountDownLatch
 
-import gevent
-
 try:
     basestring  # PY2
 except NameError:
@@ -31,7 +29,7 @@ class Network(object):
     def __init__(self, default_capacity=10):
         # FIXME: what should the name be?
         # super(Network, self).__init__(self.__class__.__name__, None)
-        self.logger = logger
+        # self.logger = logger
         self.default_capacity = default_capacity
         self.deadlock_test = True
 
@@ -65,11 +63,29 @@ class Network(object):
         # might not be safe to make them regular ints
         self.sends = self.receives = self.creates = self.drops = self.drop_olds = None
 
+    def __getstate__(self):
+        data = self.__dict__.copy()
+        for k in ('cdl', 'runners'):
+            data.pop(k)
+        if self.runners is not None:
+            runners = {}
+            for name, runner in self.runners.items():
+                runners[name] = runner.status
+            data['runners'] = runners
+        return data
+
+    def __setstate__(self, data):
+        runners = data.pop('runners', None)
+        self.__dict__.update(data)
+        if runners is not None:
+            self._build_runners()
+            for name, status in runners.items():
+                self.runners[name].status = status
+
     def reset(self):
         freq = 0.5 if self.deadlock_test else None
         self.cdl = CountDownLatch(len(self._components), freq)
 
-        self.runners = OrderedDict()
         self.globals = {}
         self.deadlock = False
         self.error = None
@@ -82,6 +98,9 @@ class Network(object):
         self.creates = 0
         self.drops = 0
         self.drop_olds = 0
+
+        for name, comp in self._components.items():
+            comp.init()
 
     def add_component(self, name, comp_type, **initializations):
         """
@@ -222,17 +241,19 @@ class Network(object):
 
         inport.uninitialize()
 
-    def go(self):
+    def go(self, resume=False):
         """
         Execute the network
         """
         now = time.time()
 
+        self.active = True
         try:
-            self.active = True
-            self.initiate()
+            if resume:
+                self.resume()
+            else:
+                self.initiate()
             self.wait_for_all()
-
         except FlowError as e:
             s = "Flow Error :" + str(e)
             logger.info("Network: " + s)
@@ -250,6 +271,7 @@ class Network(object):
         logger.info(" receives:       %d", self.receives)
 
         if self.error is not None:
+            logger.error("re-rasing error")
             # throw the exception which caused the network to stop
             # FIXME: figure out how to re-raise exception with traceback
             raise_with_traceback(self.error)
@@ -260,9 +282,60 @@ class Network(object):
         # -- synchronized (comp)
         comp.status = StatusValues.TERMINATED
         # -- end
-        self.logger.debug("{}: Terminated", args=[comp])
+        logger.debug("{}: Terminated", args=[comp])
         self.cdl.count_down()
         # net.interrupt()
+
+    def _build_runners(self):
+        self.runners = OrderedDict()
+        for name, comp in self._components.items():
+            runner = ComponentRunner(comp)
+            comp._runner = runner
+            self.runners[name] = runner
+            runner.status = StatusValues.NOT_STARTED
+
+    def _open_ports(self):
+        errors = []
+        for runner in self.runners.values():
+            errors += runner._open_ports()
+        if errors:
+            for error in errors:
+                logger.error(error)
+            raise FlowError("Errors opening ports")
+
+    def resume(self):
+        self_starters = []
+        for runner in self.runners.values():
+            for port in runner.inports:
+                if port.is_connected() and not port.is_static():
+                    print port, port._connection._queue
+
+            if runner.status in (StatusValues.TERMINATED, StatusValues.ERROR):
+                runner.kill()
+                continue
+
+            elif runner.status in (StatusValues.SUSP_RECV,
+                                   StatusValues.SUSP_SEND,
+                                   StatusValues.DORMANT,
+                                   StatusValues.ACTIVE):
+                self_starters.append(runner)
+            else:
+                runner.auto_starting = True
+
+                if not runner.component._self_starting:
+                    for port in runner.inports.ports():
+                        if port.is_connected() and not port.is_static():
+                            runner.auto_starting = False
+                            break
+
+                if runner.auto_starting:
+                    self_starters.append(runner)
+
+        if not self_starters:
+            raise FlowError("No self-starters found")
+
+        for runner in self_starters:
+            runner._activate()
 
     def initiate(self):
         """
@@ -270,19 +343,8 @@ class Network(object):
         self-starting (have no input connections)
         """
         self.reset()
-
-        errors = []
-        for name, comp in self._components.items():
-            runner = ComponentRunner(comp)
-            comp._runner = runner
-            self.runners[name] = runner
-            runner.status = StatusValues.NOT_STARTED
-            errors += runner._open_ports()
-        if errors:
-            for error in errors:
-                logger.error(error)
-            raise FlowError("Errors opening ports")
-
+        self._build_runners()
+        self._open_ports()
         self_starters = []
         for runner in self.runners.values():
             runner.auto_starting = True
@@ -316,6 +378,8 @@ class Network(object):
         """
         Test if network as a whole has terminated
         """
+        import gevent
+
         possible_deadlock = False
 
         # freq = .5  # check every .5 second
@@ -352,6 +416,7 @@ class Network(object):
                 logger.error("Network has deadlocked")
                 for status, objs in self.msgs:
                     logger.error("  {:<13}{{}}".format(status), args=objs)
+            # re-reaise LoopExit
             raise
 
             #
@@ -411,13 +476,13 @@ class Network(object):
         # in case it is not a self.deadlock
 
         terminated = True
-        for comp in self.runners.values():
-            if isinstance(comp, SubNet):
+        for runner in self.runners.values():
+            if isinstance(runner, SubNet):
                 # consider components of subnets
-                if not comp.list_comp_status(msgs):
+                if not runner.list_comp_status(msgs):
                     return False
             else:
-                status = comp.status
+                status = runner.status
                 if status in (StatusValues.ACTIVE, StatusValues.LONG_WAIT):
                     return False
 

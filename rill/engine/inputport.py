@@ -323,7 +323,8 @@ class Connection(ConnectionInterface):
     """
 
     def __init__(self):
-        # number of connected senders that are not closed.
+        # number of connected senders that are not closed. incremented by
+        # OutputPort.open()
         self._sender_count = 0
         # the connected InputPort
         self.inport = None
@@ -343,11 +344,23 @@ class Connection(ConnectionInterface):
         return '%s(%r)' % (self.__class__.__name__,
                            self.inport.get_full_name())
 
+    def __getstate__(self):
+        data = self.__dict__.copy()
+        for k in ('_not_empty', '_not_full'):
+            data.pop(k)
+        return data
+
+    def __setstate__(self, data):
+        for key, value in data.items():
+            self.__dict__[key] = value
+        self._not_empty = gevent.event.Event()
+        self._not_full = gevent.event.Event()
+
     def count(self):
         return len(self._queue)
 
     def open(self):
-        self._sender_count = len(self.outports)
+        pass
 
     def close(self):
         """

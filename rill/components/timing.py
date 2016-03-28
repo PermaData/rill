@@ -23,15 +23,19 @@ def Heartbeat(INTERVAL, OUT):
 @component
 @outport("OUT")
 @inport("IN")
-@inport("DELAY", type=float)
+@inport("DELAY", type=float, optional=False)
 def SlowPass(IN, DELAY, OUT):
     """
     Pass a stream of packets to an output stream with a delay between packets
     """
     delay = DELAY.receive_once()
+    time.sleep(delay)
     for p in IN:
-        time.sleep(delay)
+        # in order to remain fault-tolerant, we have to sleep after we send
+        # and not before, or else we could be terminated while holding a
+        # packet.
         OUT.send(p)
+        time.sleep(delay)
 
 
 # FIXME: I think this can be replaced with a Copy using the NULL input port

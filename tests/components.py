@@ -104,13 +104,13 @@ def GenSS(COUNT, OUT):
     """Generates stream of 5-packet substreams under control of a counter
     """
     count = COUNT.receive_once()
-    OUT.send(Packet.OPEN)
+    OUT.send(Packet.Type.OPEN)
 
     for i in range(count):
         s = "%06d" % (count - i)
         OUT.send(s)
         if i < count - 1:  # prevent empty bracket pair at end
             if i % 5 == 5 - 1:
-                OUT.send(Packet.CLOSE)
-                OUT.send(Packet.OPEN)
-    OUT.send(Packet.CLOSE)
+                OUT.send(Packet.Type.CLOSE)
+                OUT.send(Packet.Type.OPEN)
+    OUT.send(Packet.Type.CLOSE)

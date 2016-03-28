@@ -123,6 +123,9 @@ class Component(with_metaclass(ABCMeta, object)):
     _self_starting = False
     _must_run = False
 
+    # same as module-level logger, but provided here for convenience
+    logger = logger
+
     def __init__(self, name, parent):
         assert name is not None
         self._name = name
@@ -148,9 +151,6 @@ class Component(with_metaclass(ABCMeta, object)):
         # a stack available to each component
         self._stack = deque()
 
-        # same as module-level logger, but provided here for convenience
-        self.logger = logger
-
         # count of packets owned by this component.
         # Whenever the component deactivates, the count must be zero.
         self._packet_count = 0
@@ -160,6 +160,17 @@ class Component(with_metaclass(ABCMeta, object)):
 
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.get_full_name())
+
+    def __getstate__(self):
+        data = self.__dict__.copy()
+        for k in ('_runner',):
+            data.pop(k)
+        return data
+
+    def __setstate__(self, data):
+        for key, value in data.items():
+            self.__dict__[key] = value
+        self.logger = logger
 
     def _create_port(self, port):
         if port.args.get('fixed_size') and not port.array:
@@ -195,9 +206,6 @@ class Component(with_metaclass(ABCMeta, object)):
             self, [self._create_port(p) for p in inports + [inport('NULL')]])
         self.outports = OutputCollection(
             self, [self._create_port(p) for p in outports + [outport('NULL')]])
-
-        # give custom component classes a chance to initialize themselves
-        self.init()
 
     def get_parents(self):
         """
@@ -346,11 +354,11 @@ class Component(with_metaclass(ABCMeta, object)):
         self.logger.debug("Creating packet: " + repr(contents))
         self.network.creates += 1
         # FIXME: this could be nicer
-        if contents in (Packet.OPEN, Packet.CLOSE):
+        if contents in (Packet.Type.OPEN, Packet.Type.CLOSE):
             type = contents
             contents = ""
         else:
-            type = Packet.NORMAL
+            type = Packet.Type.NORMAL
         return Packet(contents, self, type)
 
     def drop(self, packet):
@@ -568,6 +576,12 @@ class ComponentRunner(Greenlet):
         return '%s(%r)' % (self.__class__.__name__,
                            self.component.get_full_name())
 
+    def __getstate__(self):
+        data = self.__dict__.copy()
+        for k in ('_lock', '_can_go'):
+            data.pop(k)
+        return data
+
     def error(self, msg, errtype=FlowError):
         self.component.error(msg, errtype)
 
@@ -784,8 +798,6 @@ class ComponentRunner(Greenlet):
                 # thread calls parent.signal_error() to set our status to ERROR
                 if self.is_terminated() or self.has_error():
                     break
-
-                self.component._packet_count = 0
 
                 for value in self.inports.ports():
                     if value.is_static():

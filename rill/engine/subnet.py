@@ -80,14 +80,14 @@ class SubInSS(Component):
         level = 0
         for p in inport:
             p.set_owner(self)
-            if p.get_type() == Packet.OPEN:
+            if p.get_type() == Packet.Type.OPEN:
                 if level > 0:
                     self.outports.OUT.send(p)
                 else:
                     self.drop(p)
                     self.logger.debug("open bracket detected")
                 level += 1
-            elif p.get_type() == Packet.CLOSE:
+            elif p.get_type() == Packet.Type.CLOSE:
                 if level > 1:
                     # pass on nested brackets
                     self.outports.OUT.send(p)
@@ -151,13 +151,13 @@ class SubOutSS(Component):
         self.logger.debug("Accessing output port: {}".format(outport))
         outport.component = self
 
-        p = self.create(Packet.OPEN)
+        p = self.create(Packet.Type.OPEN)
         outport.send(p)
 
         for p in self.inports.IN:
             outport.send(p)
 
-        p = self.create(Packet.CLOSE)
+        p = self.create(Packet.Type.CLOSE)
         outport.send(p)
 
         self.logger.debug("Releasing output port: {}".format(outport))
@@ -222,6 +222,10 @@ class SubNet(with_metaclass(ABCMeta, Network, Component)):
         # tracing = parent.tracing
         # trace_file_list = parent.trace_file_list
 
+        # FIXME: run define() as part of init. if we allow dynamic port
+        # creation in define(), which would be great, then it needs to be run
+        # during the net creation phase to know what the ports are. or provide
+        # variable to control when it gets run...
         self.define()
         # FIXME: warn if any external ports have not been connected
 

@@ -1,3 +1,13 @@
+from enum import Enum
+
+
+# must reside here for pickling
+class PacketType(Enum):
+    OPEN = 1
+    CLOSE = 2
+    NORMAL = 3
+
+
 class Chain(object):
     def __init__(self, name):
         self.name = name
@@ -12,12 +22,10 @@ class Packet(object):
     like open and close brackets
     """
 
-    # FIXME: replace with enum34?
-    OPEN = object()
-    CLOSE = object()
-    NORMAL = object()
+    # alias
+    Type = PacketType
 
-    def __init__(self, content, owner, type=NORMAL):
+    def __init__(self, content, owner, type=Type.NORMAL):
         self._content = content
         self.owner = None
         self._type = type
@@ -26,6 +34,20 @@ class Packet(object):
         # dict of {str: Chain}
         self.chains = {}
         self.set_owner(owner)
+
+    def __str__(self):
+        value = "None"
+        if self.get_type() == Packet.Type.NORMAL:
+            obj = self.get_contents()
+            if obj is not None:
+                value = repr(obj)
+        else:
+            value = self.get_type().name
+            value += " " + self.get_name()
+        return value
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, self)
 
     def clear_owner(self):
         """Clear the owner of a Packet.
@@ -79,7 +101,7 @@ class Packet(object):
         return content
 
     def get_name(self):
-        if self._type == self.NORMAL:
+        if self._type == self.Type.NORMAL:
             return None
 
         return self._content
@@ -100,6 +122,10 @@ class Packet(object):
 
     def get_type(self):
         """Get the type of the Packet
+
+        Returns
+        -------
+        ``PacketType``
         """
         return self._type
 
@@ -131,13 +157,17 @@ class Packet(object):
         if isinstance(self.owner, Component):
             self.owner._packet_count += 1  # count of owned packets
 
-    #
     def drop(self):
         """
         Drop this packet.
 
         This exists primarily for writing functional components and should not
         be called outside the context of `Component.execute`
+
+        Returns
+        -------
+        contents : object
+            the contents of the packet being dropped
         """
         # The component that this runs from doesn't matter: the component is
         # not referenced nor is it used to determine the logger display
@@ -146,19 +176,3 @@ class Packet(object):
     def clone(self):
         # FIXME: clone attrs and chains
         return Packet(self._content, self.owner, self._type)
-
-    def __str__(self):
-        value = "None"
-        names = {
-            self.NORMAL: "NORMAL",
-            self.OPEN: "OPEN",
-            self.CLOSE: "CLOSE"
-        }
-        if self.get_type() == self.NORMAL:
-            obj = self.get_contents()
-            if obj is not None:
-                value = repr(obj)
-        else:
-            value = names[self.get_type()]
-            value += " " + self.get_name()
-        return value
