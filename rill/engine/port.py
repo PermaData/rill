@@ -11,7 +11,7 @@ from rill.engine.exceptions import FlowError
 def flatten_collections(ports):
     for port in ports:
         if isinstance(port, PortCollection):
-            for p in port.port():
+            for p in port.ports():
                 yield p
         else:
             yield port
@@ -59,7 +59,7 @@ class BasePort(with_metaclass(ABCMeta, object)):
         """
         Parameters
         ----------
-        component : ``rill.engine.component.ComponentRunner``
+        component : ``rill.engine.runner.ComponentRunner``
         name : str
         index : int or None
         optional : bool

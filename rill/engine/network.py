@@ -5,7 +5,8 @@ import time
 from future.utils import raise_with_traceback
 
 from rill.engine.exceptions import FlowError
-from rill.engine.component import Component, ComponentRunner, logger
+from rill.engine.runner import ComponentRunner
+from rill.engine.component import Component, logger
 from rill.engine.status import StatusValues
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import Connection, InputPort, InputArray
@@ -23,7 +24,7 @@ class Network(object):
 
     Attributes
     ----------
-    _components : dict of (str, ``rill.engine.component.ComponentRunner``
+    _components : dict of (str, ``rill.engine.runner.ComponentRunner``
     """
 
     def __init__(self, default_capacity=10):

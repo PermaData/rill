@@ -1,5 +1,5 @@
 from rill.components.basic import Passthru
-from rill.engine.component import inport, outport
+from rill.decorators import inport, outport
 from rill.engine.subnet import SubNet, SubInSS, SubOutSS
 
 

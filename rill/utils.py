@@ -1,5 +1,6 @@
 from weakref import WeakSet
 
+
 class NOT_SET(object):
     pass
 

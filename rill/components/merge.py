@@ -1,4 +1,4 @@
-from rill.engine.component import *
+from rill import *
 from rill.fn import cycle, synced, eager_merged
 
 

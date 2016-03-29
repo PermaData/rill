@@ -1,4 +1,4 @@
-from rill.engine.component import *
+from rill import *
 
 
 @component

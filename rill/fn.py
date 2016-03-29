@@ -21,12 +21,12 @@ def current_component_runner():
 
     Returns
     -------
-    ``rill.engine.component.ComponentRunner``
+    ``rill.engine.runner.ComponentRunner``
     """
     import gevent
     import rill.engine.component
     greenlet = gevent.getcurrent()
-    assert isinstance(greenlet, rill.engine.component.ComponentRunner)
+    assert isinstance(greenlet, rill.engine.runner.ComponentRunner)
     return greenlet
 
 

@@ -23,7 +23,7 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
         """
         Returns
         -------
-        ``rill.engine.component.ComponentRunner``
+        ``rill.engine.runner.ComponentRunner``
         """
         return self.component._runner
 
@@ -217,7 +217,7 @@ class ConnectionInterface(with_metaclass(ABCMeta, object)):
         """
         Returns
         -------
-        ``rill.engine.component.ComponentRunner``
+        ``rill.engine.runner.ComponentRunner``
         """
         return self.inport.component._runner
 
@@ -226,7 +226,7 @@ class ConnectionInterface(with_metaclass(ABCMeta, object)):
         """
         Returns
         -------
-        ``rill.engine.component.ComponentRunner``
+        ``rill.engine.runner.ComponentRunner``
         """
         return self.outport.component._runner
 

@@ -16,7 +16,7 @@ class OutputInterface(with_metaclass(ABCMeta, PortInterface)):
         """
         Returns
         -------
-        ``rill.engine.component.ComponentRunner``
+        ``rill.engine.runner.ComponentRunner``
         """
         return self.component._runner
 

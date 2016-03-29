@@ -1,4 +1,4 @@
-from rill.engine.component import *
+from rill import *
 from rill.fn import zip, cycle, load_balanced, forked
 
 

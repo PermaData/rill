@@ -19,7 +19,8 @@ from rill.components.files import ReadLines, WriteLines, Write
 from rill.components.timing import SlowPass
 from rill.components.text import Prefix, LineToWords, LowerCase, StartsWith, WordsToLine
 
-from rill.engine.component import Component, ComponentRunner
+from rill.engine.runner import ComponentRunner
+from rill.engine.component import Component
 from rill.decorators import inport, outport, component
 
 import logging

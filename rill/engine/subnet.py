@@ -2,10 +2,9 @@ from abc import ABCMeta, abstractmethod
 
 from future.utils import with_metaclass
 
-from rill.engine.component import Component, inport, outport
+from rill.engine.component import Component, inport, outport, logger
 from rill.engine.network import Network
 from rill.engine.status import StatusValues
-from rill.engine.component import logger
 from rill.engine.inputport import InputPort
 from rill.engine.outputport import OutputPort
 from rill.engine.exceptions import FlowError
