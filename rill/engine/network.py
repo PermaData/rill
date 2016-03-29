@@ -1,21 +1,25 @@
+"""
+This module is responsible for applying gevent monkey patching, so it should
+be imported before all others if you intend to process a network in the current
+python process.
+"""
+from rill.engine.utils import patch
+patch()
+
 from collections import defaultdict, OrderedDict
 from inspect import isclass
 import time
 
 from future.utils import raise_with_traceback
+from past.builtins import basestring
 
-from rill.engine.exceptions import FlowError
+from rill.engine.exceptions import FlowError, NetworkDeadlock
 from rill.engine.runner import ComponentRunner
 from rill.engine.component import Component, logger
 from rill.engine.status import StatusValues
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import Connection, InputPort, InputArray
 from rill.engine.utils import CountDownLatch
-
-try:
-    basestring  # PY2
-except NameError:
-    basestring = str  # PY3
 
 
 class Network(object):
@@ -27,12 +31,12 @@ class Network(object):
     _components : dict of (str, ``rill.engine.runner.ComponentRunner``
     """
 
-    def __init__(self, default_capacity=10):
+    def __init__(self, default_capacity=10, deadlock_test_interval=1):
         # FIXME: what should the name be?
         # super(Network, self).__init__(self.__class__.__name__, None)
         # self.logger = logger
         self.default_capacity = default_capacity
-        self.deadlock_test = True
+        self.deadlock_test_interval = deadlock_test_interval
 
         self.active = False  # used for deadlock detection
 
@@ -66,7 +70,7 @@ class Network(object):
 
     def __getstate__(self):
         data = self.__dict__.copy()
-        for k in ('cdl', 'runners'):
+        for k in ('cdl', 'runners', 'msgs'):
             data.pop(k)
         if self.runners is not None:
             runners = {}
@@ -84,8 +88,8 @@ class Network(object):
                 self.runners[name].status = status
 
     def reset(self):
-        freq = 0.5 if self.deadlock_test else None
-        self.cdl = CountDownLatch(len(self._components), freq)
+        # freq = 0.5 if self.deadlock_test_interval else None
+        # self.cdl = CountDownLatch(len(self._components), freq)
 
         self.globals = {}
         self.deadlock = False
@@ -246,14 +250,22 @@ class Network(object):
         """
         Execute the network
         """
+        import gevent
+
         now = time.time()
 
         self.active = True
+        deadlock_thread = None
+
         try:
             if resume:
                 self.resume()
             else:
                 self.initiate()
+
+            if self.deadlock_test_interval:
+                deadlock_thread = gevent.spawn(self._test_deadlocks)
+
             self.wait_for_all()
         except FlowError as e:
             s = "Flow Error :" + str(e)
@@ -261,6 +273,9 @@ class Network(object):
             raise
         finally:
             self.active = False
+
+        if deadlock_thread:
+            deadlock_thread.kill()
 
         duration = time.time() - now
         logger.info("Run complete.  Time: %.02f seconds" % duration)
@@ -274,7 +289,6 @@ class Network(object):
         if self.error is not None:
             logger.error("re-rasing error")
             # throw the exception which caused the network to stop
-            # FIXME: figure out how to re-raise exception with traceback
             raise_with_traceback(self.error)
 
     # FIXME: get rid of this:  we don't need the CDL anymore...
@@ -308,8 +322,10 @@ class Network(object):
         self_starters = []
         for runner in self.runners.values():
             for port in runner.inports:
-                if port.is_connected() and not port.is_static():
-                    print port, port._connection._queue
+                if port.is_connected() and not port.is_static() and \
+                        port._connection._queue:
+                    logger.info("Existing data in connection buffer: {}",
+                                args=[port])
 
             if runner.status in (StatusValues.TERMINATED, StatusValues.ERROR):
                 runner.kill()
@@ -381,25 +397,6 @@ class Network(object):
         """
         import gevent
 
-        possible_deadlock = False
-
-        # freq = .5  # check every .5 second
-        # while True:
-        #     res = True
-        #     # GenTraceLine("Starting await")
-        #     try:
-        #         self.cdl.start()
-        #         print "cdl get"
-        #         res = self.cdl.get()
-        #         print "cdl check", res
-        #     # FIXME:
-        #     # except InterruptedException as e:
-        #     except Exception as e:
-        #         raise e
-        #         # raise FlowError("Network " + self.get_name() + " interrupted")
-        #     if res:
-        #         break
-
         try:
             for completed in gevent.iwait(self.runners.values()):
                 logger.debug("Component completed: {}".format(completed))
@@ -411,53 +408,34 @@ class Network(object):
                 if self._abort:
                     break
         except gevent.hub.LoopExit:
-            self.msgs = []
-            # if True, it is a deadlock
-            if self.list_comp_status(self.msgs):
-                logger.error("Network has deadlocked")
-                for status, objs in self.msgs:
-                    logger.error("  {:<13}{{}}".format(status), args=objs)
-            # re-reaise LoopExit
-            raise
+            statuses = []
+            if self.list_comp_status(statuses):
+                self._signal_deadlock(statuses)
 
-            #
-            # # time elapsed
-            # if not self.deadlock_test:
-            #     continue
-            #
-            # # enabled
-            #
-            # # FIXME: figure this out
-            # # self.test_timeouts(freq)
-            #
-            # if self.active:
-            #     self.active = False  # reset flag every 1/2 sec
-            # elif not possible_deadlock:
-            #     possible_deadlock = True
-            # else:
-            #     self.deadlock = True  # well, maybe
-            #     # so test state of components
-            #     self.msgs = []
-            #     # add in case self.msgs are printed
-            #     self.msgs.append("Network has deadlocked")
-            #     # if True, it is a deadlock
-            #     if self.list_comp_status(self.msgs):
-            #         #          interrupt_all()
-            #         for m in self.msgs:
-            #             logger.info(m)
-            #         # FlowError.Complain("Deadlock detected")
-            #         logger.info("*** Deadlock detected in Network ")
-            #         # terminate the net instead of crashing the application
-            #         self.terminate()
-            #         # tell the caller a self.deadlock occurred
-            #         raise FlowError("Deadlock detected in Network")
-            #     # one or more components haven't started or are in a wait
-            #     self.deadlock = False
-            #     possible_deadlock = False  # while
+    def _signal_deadlock(self, statuses):
+        logger.error("Network has deadlocked")
+        for status, objs in statuses:
+            logger.error("  {:<13}{{}}".format(status), args=objs)
+        raise NetworkDeadlock("Deadlock detected in Network", statuses)
 
-            # print "JOIN"
-            # for comp in self._components.values():
-            #     comp.join()
+    def _test_deadlocks(self):
+        import gevent
+        deadlock_status = None
+        while self.active:
+            statuses = []
+            # if True, it is a potential deadlock
+            if self.list_comp_status(statuses):
+                if deadlock_status is None:
+                    deadlock_status = statuses
+                elif statuses == deadlock_status:
+                    self.terminate()
+                    # same set of statuses two checks in a row: deadlocked
+                    self._signal_deadlock(statuses)
+                else:
+                    deadlock_status = None
+            else:
+                deadlock_status = None
+            gevent.sleep(self.deadlock_test_interval)
 
     def list_comp_status(self, msgs):
         """
@@ -487,15 +465,15 @@ class Network(object):
                 if status in (StatusValues.ACTIVE, StatusValues.LONG_WAIT):
                     return False
 
-                if not status == StatusValues.TERMINATED:
+                if status != StatusValues.TERMINATED:
                     terminated = False
 
                 if status == StatusValues.SUSP_RECV:
-                    objs = [comp._curr_conn]
+                    objs = [runner._curr_conn]
                 elif status == StatusValues.SUSP_SEND:
-                    objs = [comp._curr_outport._connection]
+                    objs = [runner._curr_outport._connection]
                 else:
-                    objs = [comp]
+                    objs = [runner]
 
                 msgs.append((status, objs))
 

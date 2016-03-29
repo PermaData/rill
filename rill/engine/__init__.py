@@ -1,9 +1,3 @@
-from gevent import monkey
-
-print("Performing gevent monkey-patching")
-
-monkey.patch_all()
-
 import logging
 
 logging.basicConfig(

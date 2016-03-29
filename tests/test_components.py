@@ -1,11 +1,15 @@
 import pytest
 
 import gevent.monkey
+import gevent
 
 from rill.engine.exceptions import FlowError
 from rill.engine.network import Network
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import InputPort, InputArray
+from rill.engine.runner import ComponentRunner
+from rill.engine.component import Component
+from rill.decorators import inport, outport, component
 
 from tests.components import *
 from tests.subnets import PassthruNet
@@ -19,14 +23,12 @@ from rill.components.files import ReadLines, WriteLines, Write
 from rill.components.timing import SlowPass
 from rill.components.text import Prefix, LineToWords, LowerCase, StartsWith, WordsToLine
 
-from rill.engine.runner import ComponentRunner
-from rill.engine.component import Component
-from rill.decorators import inport, outport, component
-
 import logging
-ComponentRunner.logger.logger.setLevel(logging.DEBUG)
+ComponentRunner.logger.setLevel(logging.DEBUG)
 
-is_patched = gevent.monkey.is_module_patched("sys")
+
+# we use socket as our canary
+is_patched = gevent.monkey.is_module_patched("socket")
 requires_patch = pytest.mark.skipif(not is_patched,
                                     reason='requires patched gevent')
 
@@ -51,13 +53,15 @@ def names(ports):
 
 
 def run(network, *pairs):
-    network.go()
-    for real, ref in pairs:
-        assert real.values == ref
-        real.values = []
-    network.go()
-    for real, ref in pairs:
-        assert real.values == ref
+    """Run a network twice to ensure that it shuts down properly"""
+    with gevent.Timeout(2):
+        network.go()
+        for real, ref in pairs:
+            assert real.values == ref
+            real.values = []
+        network.go()
+        for real, ref in pairs:
+            assert real.values == ref
 
 
 @component(pass_context=True)
@@ -106,7 +110,9 @@ def net(request):
     return Network(**request.param)
 
 
-@pytest.fixture(params=['looper', 'nonlooper'] if is_patched else ['looper'])
+# non-loopers are only safe when using gevent.monkey.patch_all().
+# FIXME: find out why... OR stop supporting component reactivation (i.e. non-loopers)
+@pytest.fixture(params=['looper', requires_patch('nonlooper')])
 def discard(request):
     return DiscardLooper if request.param == 'looper' else Discard
 
@@ -185,16 +191,16 @@ def test_static_type_validation():
         net.add_component("Repeat", Repeat, COUNT='foo')
 
 
-@pytest.mark.xfail(reason='order is ACB instead of ABC')
-@requires_patch
-def test_multiple_inputs(net):
+@pytest.mark.xfail(is_patched, reason='order is ACB instead of ABC')
+# @requires_patch
+def test_multiple_inputs(net, discard):
     net.add_component("GenerateA", GenerateTestData, COUNT=5)
     net.add_component("PrefixA", Prefix, PRE='A')
     net.add_component("GenerateB", GenerateTestData, COUNT=5)
     net.add_component("PrefixB", Prefix, PRE='B')
     net.add_component("GenerateC", GenerateTestData, COUNT=5)
     net.add_component("PrefixC", Prefix, PRE='C')
-    dis = net.add_component("Discard", Discard)
+    dis = net.add_component("Discard", discard)
 
     net.connect("GenerateA.OUT", "PrefixA.IN")
     net.connect("GenerateB.OUT", "PrefixB.IN")
@@ -493,18 +499,17 @@ def test_inport_closed(net, discard):
     assert dis.values == ['000005']
 
 
-@pytest.mark.xfail(
-    reason='the error should not prevent the network from completing...')
-def test_inport_closed_error(net, discard):
+def test_inport_closed_propagation(net, discard):
+    """If a downstream inport is closed, the upstream component should shut
+    down"""
     net.add_component("Generate", GenerateTestDataDumb, COUNT=5)
-    net.add_component("First", First)
+    net.add_component("First", First)  # receives one packet then closes IN
     dis = net.add_component("Discard", discard)
 
     net.connect("Generate.OUT", "First.IN")
     net.connect("First.OUT", "Discard.IN")
 
-    with pytest.raises(FlowError):
-        net.go()
+    net.go()
 
     assert dis.values == ['000005']
 

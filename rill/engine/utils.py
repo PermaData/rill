@@ -1,10 +1,22 @@
+import os
 import logging
 import gevent
 from gevent.lock import RLock
 from termcolor import colored
 
 
+def patch():
+    if os.environ.get('RILL_SKIP_GEVENT_PATCH', False):
+        return
+    from gevent import monkey
+    print("Performing gevent monkey-patching")
+    monkey.patch_all()
+
+
 class LogFormatter(logging.LoggerAdapter):
+    def setLevel(self, level):
+        self.logger.setLevel(level)
+
     @classmethod
     def _format(cls, obj, include_count=True):
         from rill.engine.component import Component
@@ -106,7 +118,7 @@ class CountDownLatch(gevent.Greenlet):
 
             self._count -= 1
             # Return inside lock to return the correct value,
-            # otherwise an other thread could already have
+            # otherwise another thread could already have
             # decremented again.
             return self._count
 

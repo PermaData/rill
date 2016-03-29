@@ -2,6 +2,7 @@ from rill import *
 from rill.fn import range
 import itertools
 
+
 @component
 @inport("IN", description="Packets to be displayed")
 @outport("OUT", optional=True, description="Output port, if connected")

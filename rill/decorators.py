@@ -1,9 +1,7 @@
+from past.builtins import basestring
+
 from rill.utils import Annotation, FlagAnnotation, NOT_SET
 
-try:
-    basestring  # PY2
-except NameError:
-    basestring = str  # PY3
 
 __all__ = ['inport', 'outport', 'must_run', 'self_starting', 'component']
 
@@ -54,6 +52,8 @@ class outport(_Port):
     _kind = 'output'
 
 
+# FIXME: could be a nice feature to make users add an explanation, e.g.
+#  @must_run("file must always be opened for writing so that data is reset")
 class must_run(FlagAnnotation):
     """
     A component decorated with `must_run` is activated once even if all

@@ -1,4 +1,4 @@
-from collections import deque, Counter
+import collections
 import logging
 import re
 from abc import ABCMeta, abstractmethod
@@ -60,7 +60,7 @@ class Component(with_metaclass(ABCMeta, object)):
         self.outports = None
 
         # a stack available to each component
-        self._stack = deque()
+        self._stack = collections.deque()
 
         # count of packets owned by this component.
         # Whenever the component deactivates, the count must be zero.
@@ -97,7 +97,7 @@ class Component(with_metaclass(ABCMeta, object)):
 
     def _init(self):
         """
-        Initialize internal attributes from decorators.
+        Initialize internal attributes.
         """
         inports = self._inport_definitions
         outports = self._outport_definitions
@@ -105,7 +105,8 @@ class Component(with_metaclass(ABCMeta, object)):
         # that _FunctionComponent functions can receive a named argument per
         # port
         names = [p.args['name'] for p in inports + outports]
-        dupes = [x for x, count in Counter(names).items() if count > 1]
+        dupes = [x for x, count in collections.Counter(names).items()
+                 if count > 1]
         if dupes:
             self.error(
                 "Duplicate port names: {}".format(', '.join(dupes)))
@@ -445,7 +446,7 @@ class Component(with_metaclass(ABCMeta, object)):
 class _FunctionComponent(with_metaclass(ABCMeta, Component)):
     """
     Base class for components created from functions via
-    ``rill.engine.decorators.component``
+    ``rill.decorators.component``
     """
     _pass_context = False
 
