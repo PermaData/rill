@@ -1,4 +1,5 @@
 from weakref import WeakSet
+import inspect
 
 
 class NOT_SET(object):
@@ -60,7 +61,16 @@ class Annotation(object):
         """
         Get annotated data for `obj`
         """
-        return getattr(obj, cls.attr(), cls.default)
+        # don't get inherited values
+        return obj.__dict__.get(cls.attr(), cls.default)
+
+    @classmethod
+    def get_inherited(cls, obj):
+        assert cls.multi
+        result = []
+        for base in reversed(inspect.getmro(obj)):
+            result.extend(cls.get(base) or [])
+        return result
 
     @classmethod
     def pop(cls, obj):
@@ -88,7 +98,7 @@ class Annotation(object):
         if not cls.seen(obj):
             values = []
         else:
-            values = cls.get(obj)
+            values = cls.get(obj) or []
         cls.set(obj, values)
         # we actually prepend because decorators are applied bottom up, which
         # when maintaining order, is not usually intuitive

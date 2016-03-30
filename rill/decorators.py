@@ -7,7 +7,6 @@ __all__ = ['inport', 'outport', 'must_run', 'self_starting', 'component']
 
 
 class _Port(Annotation):
-    default = []
     multi = True
 
     _kind = None
