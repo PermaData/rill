@@ -32,7 +32,7 @@ class inport(_Port):
     """
     Decorator to add an input port to a component.
     """
-    attribute = '_inport_definitions'
+    attribute = 'inport_definitions'
     _kind = 'input'
 
     def __init__(self, name, type=None, array=False, fixed_size=None,
@@ -48,7 +48,7 @@ class outport(_Port):
     """
     Decorator to add an output port to a component.
     """
-    attribute = '_outport_definitions'
+    attribute = 'outport_definitions'
     _kind = 'output'
 
 

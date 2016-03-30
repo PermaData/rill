@@ -208,7 +208,7 @@ class Runtime(object):
                     #'values': []
                     'default': inport.default
                 }
-                for inport in component_class._inport_definitions
+                for inport in component_class.inport_definitions
             ],
             'outPorts': [
                 {
@@ -219,7 +219,7 @@ class Runtime(object):
                     'addressable': outport.array,
                     'required': (not outport.args['optional'])
                 }
-                for outport in component_class._outport_definitions
+                for outport in component_class.outport_definitions
             ]
         }
 
