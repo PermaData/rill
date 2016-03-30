@@ -127,10 +127,10 @@ class Counter(Component):
         # FIXME: is it possible for a looper to be terminated and then
         # reactivated? if so, self.count will be wrong.  it is designed this
         # way to allow pause/resume (i.e. fault-tolerance)
-        for p in self.inports.IN.iter_packets():
+        for p in self.ports.IN.iter_packets():
             self.count += 1
-            self.outports.OUT.send(p)
-        self.outports.COUNT.send(self.count)
+            self.ports.OUT.send(p)
+        self.ports.COUNT.send(self.count)
 
     def init(self):
         self.count = 0

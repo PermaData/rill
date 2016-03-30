@@ -12,7 +12,6 @@ from rill.engine.component import Component
 from rill.decorators import inport, outport, component
 
 from tests.components import *
-from tests.subnets import PassthruNet
 
 from rill.components.basic import Counter, Sort, Inject, Repeat, Cap
 from rill.components.filters import First
@@ -49,7 +48,7 @@ requires_patch = pytest.mark.skipif(not is_patched,
 
 
 def names(ports):
-    return [x.name for x in ports.ports()]
+    return [x.name for x in ports]
 
 
 def run(network, *pairs):
@@ -62,45 +61,6 @@ def run(network, *pairs):
         network.go()
         for real, ref in pairs:
             assert real.values == ref
-
-
-@component(pass_context=True)
-@inport("IN")
-@outport("OUT")
-def Passthru(self, IN, OUT):
-    """Pass a stream of packets to an output stream"""
-    self.values = []
-    for p in IN.iter_packets():
-        self.values.append(p.get_contents())
-        OUT.send(p)
-
-
-@inport("IN", description="Stream of packets to be discarded")
-class Discard(Component):
-    def execute(self):
-        p = self.inports.IN.receive()
-        if p is None:
-            return
-        self.packets.append(p)
-        self.values.append(p.get_contents())
-        self.drop(p)
-
-    def init(self):
-        self.values = []
-        self.packets = []
-
-
-@inport("IN", description="Stream of packets to be discarded")
-class DiscardLooper(Component):
-    def execute(self):
-        for p in self.inports.IN:
-            self.packets.append(p)
-            self.values.append(p.get_contents())
-            self.drop(p)
-
-    def init(self):
-        self.values = []
-        self.packets = []
 
 
 @pytest.fixture(params=[dict(default_capacity=1),
@@ -240,11 +200,11 @@ def test_basic_connections():
 
     # ports are stored in the order they are declared
     assert names(count.outports) == ['OUT', 'COUNT']
-    assert list(count.outports._ports.keys()) == ['OUT', 'COUNT', 'NULL']
+    # assert list(count.ports._ports.keys()) == ['OUT', 'COUNT', 'NULL']
 
     # nothing is connected yet
-    assert count.outports['OUT'].is_connected() is False
-    assert dis.inports['IN'].is_connected() is False
+    assert count.ports['OUT'].is_connected() is False
+    assert dis.ports['IN'].is_connected() is False
 
     with pytest.raises(FlowError):
         # non-existent port
@@ -265,10 +225,18 @@ def test_basic_connections():
         # connected ports cannot be initialized
         net.initialize(1, "Discard1.IN")
 
-    assert type(count.outports['OUT']) is OutputPort
-    assert type(dis.inports['IN']) is InputPort
-    assert count.outports['OUT'].is_connected() is True
-    assert dis.inports['IN'].is_connected() is True
+    assert type(count.ports['OUT']) is OutputPort
+    assert type(dis.ports['IN']) is InputPort
+    assert count.ports['OUT'].is_connected() is True
+    assert dis.ports['IN'].is_connected() is True
+
+    net.reset()
+    net._build_runners()
+    net._open_ports()
+    assert count.ports['OUT'].component is count
+    assert isinstance(count.ports['OUT'].sender, ComponentRunner)
+    assert dis.ports['IN'].component is dis
+    assert isinstance(dis.ports['IN'].receiver, ComponentRunner)
 
 
 def test_fixed_array_connections():
@@ -277,27 +245,27 @@ def test_fixed_array_connections():
     dis1 = net.add_component("Discard1", Discard)
     net.add_component("Discard2", Discard)
 
-    assert gen.outports['OUT'].get_full_name() == 'Generate.OUT'
+    assert gen.ports['OUT'].get_full_name() == 'Generate.OUT'
 
     # fixed array ports create their ports immediately
-    assert gen.outports.OUT.fixed_size == 2
+    assert gen.ports.OUT.fixed_size == 2
     assert names(gen.outports) == ['OUT[0]', 'OUT[1]']
-    assert list(gen.outports._ports.keys()) == ['OUT', 'NULL']
-    assert type(gen.outports['OUT']) is OutputArray
-    assert type(dis1.inports['IN']) is InputPort
+    # assert list(gen.ports._ports.keys()) == ['OUT', 'NULL']
+    assert type(gen.ports['OUT']) is OutputArray
+    assert type(dis1.ports['IN']) is InputPort
 
     # nothing is connected yet
-    assert gen.outports['OUT'].is_connected() is False
-    assert dis1.inports['IN'].is_connected() is False
+    assert gen.ports['OUT'].is_connected() is False
+    assert dis1.ports['IN'].is_connected() is False
 
     # make a connection
     net.connect("Generate.OUT[1]", "Discard1.IN")
     assert names(gen.outports) == ['OUT[0]', 'OUT[1]']
-    assert gen.outports['OUT'][1].is_connected() is True
+    assert gen.ports['OUT'][1].is_connected() is True
 
     # uses first unconnected index (index 0)
     net.connect("Generate.OUT", "Discard2.IN")
-    assert gen.outports['OUT'][0].is_connected() is True
+    assert gen.ports['OUT'][0].is_connected() is True
 
     with pytest.raises(FlowError):
         # outports can only have one connection
@@ -307,11 +275,11 @@ def test_fixed_array_connections():
         # cannot connect outside the fixed range
         net.connect("Generate.OUT[2]", "Discard2.IN")
 
-    assert type(gen.outports['OUT']) is OutputArray
-    assert type(gen.outports['OUT'][0]) is OutputPort
-    assert type(dis1.inports['IN']) is InputPort
-    assert gen.outports['OUT'].is_connected() is False
-    assert dis1.inports['IN'].is_connected() is True
+    assert type(gen.ports['OUT']) is OutputArray
+    assert type(gen.ports['OUT'][0]) is OutputPort
+    assert type(dis1.ports['IN']) is InputPort
+    assert gen.ports['OUT'].is_connected() is False
+    assert dis1.ports['IN'].is_connected() is True
 
 
 def test_array_connections():
@@ -320,34 +288,34 @@ def test_array_connections():
     dis1 = net.add_component("Discard1", Discard)
     net.add_component("Discard2", Discard)
 
-    assert gen.outports['OUT'].get_full_name() == 'Generate.OUT'
+    assert gen.ports['OUT'].get_full_name() == 'Generate.OUT'
 
     # non-fixed array ports delay element creation
-    assert gen.outports.OUT.fixed_size is None
+    assert gen.ports.OUT.fixed_size is None
     assert names(gen.outports) == []
-    assert list(gen.outports._ports.keys()) == ['OUT', 'NULL']
-    assert type(gen.outports['OUT']) is OutputArray
-    assert type(dis1.inports['IN']) is InputPort
+    # assert list(gen.ports._ports.keys()) == ['OUT', 'NULL']
+    assert type(gen.ports['OUT']) is OutputArray
+    assert type(dis1.ports['IN']) is InputPort
 
     # nothing is connected yet
-    assert gen.outports['OUT'].is_connected() is False
-    assert dis1.inports['IN'].is_connected() is False
+    assert gen.ports['OUT'].is_connected() is False
+    assert dis1.ports['IN'].is_connected() is False
 
     # make a connection
     net.connect("Generate.OUT[1]", "Discard1.IN")
     assert names(gen.outports) == ['OUT[1]']
-    assert gen.outports['OUT'][1].is_connected() is True
+    assert gen.ports['OUT'][1].is_connected() is True
 
     # uses first unused index (index 0)
     net.connect("Generate.OUT", "Discard2.IN")
     assert names(gen.outports) == ['OUT[0]', 'OUT[1]']
-    assert gen.outports['OUT'][0].is_connected() is True
+    assert gen.ports['OUT'][0].is_connected() is True
 
-    assert type(gen.outports['OUT']) is OutputArray
-    assert type(gen.outports['OUT'][0]) is OutputPort
-    assert type(dis1.inports['IN']) is InputPort
-    assert gen.outports['OUT'].is_connected() is False
-    assert dis1.inports['IN'].is_connected() is True
+    assert type(gen.ports['OUT']) is OutputArray
+    assert type(gen.ports['OUT'][0]) is OutputPort
+    assert type(dis1.ports['IN']) is InputPort
+    assert gen.ports['OUT'].is_connected() is False
+    assert dis1.ports['IN'].is_connected() is True
 
 
 def test_required_port_error(net, discard):
@@ -374,14 +342,14 @@ def test_required_array_error():
     must be connected"""
     net = Network()
     gen = net.add_component("Generate", GenerateFixedSizeArray)
-    assert gen.outports['OUT'].optional is False
+    assert gen.ports['OUT'].optional is False
     net.add_component("Discard1", Discard)
     net.connect("Generate.OUT[0]", "Discard1.IN")
     assert names(gen.outports) == ['OUT[0]', 'OUT[1]']
 
     gen.init()
     with pytest.raises(FlowError):
-        gen.outports.OUT.open()
+        gen.ports.OUT.open()
 
 
 def test_unconnected_output_array_element(net, discard):
@@ -400,9 +368,9 @@ def test_unconnected_output_array_element(net, discard):
 def test_add_component():
     net = Network()
     gen = net.add_component("generate", GenerateTestData, COUNT=10)
-    assert type(gen.inports.COUNT) is InputPort
-    assert gen.inports.COUNT.is_static()
-    assert gen.inports.COUNT._connection._content == 10
+    assert type(gen.ports.COUNT) is InputPort
+    assert gen.ports.COUNT.is_static()
+    assert gen.ports.COUNT._connection._content == 10
 
     with pytest.raises(FlowError):
         net.add_component("generate", GenerateTestData)
@@ -435,10 +403,10 @@ def test_optional_fixed_size_array_error():
     connected if the array port is required"""
     net = Network()
     gen = net.add_component("Generate", GenerateFixedSizeArray)
-    assert gen.outports['OUT'].optional is False
+    assert gen.ports['OUT'].optional is False
     gen.init()
     with pytest.raises(FlowError):
-        gen.outports.OUT.open()
+        gen.ports.OUT.open()
 
 
 def test_null_ports(net, tmpdir, discard):
@@ -450,7 +418,7 @@ def test_null_ports(net, tmpdir, discard):
     dis = net.add_component("Discard", discard)
 
     net.connect("Generate.OUT", "Write.IN")
-    net.connect("Write.NULL", "Read.NULL")
+    net.connect("Write.OUT_NULL", "Read.IN_NULL")
     net.connect("Read.OUT", "Discard.IN")
     net.go()
 
@@ -480,7 +448,7 @@ def test_null_ports2(net, tmpdir, discard):
     # each file written, instead of Write.NULL which sends after all files are
     # written, but we use the latter because it reveals an interesting deadlock
     # issue with Replicate (see notes in that component for more info)
-    net.connect("Write.NULL", "Read.NULL")
+    net.connect("Write.OUT_NULL", "Read.IN_NULL")
     net.connect("Read.OUT", "Discard.IN")
     net.go()
 
@@ -517,12 +485,21 @@ def test_inport_closed_propagation(net, discard):
 @requires_patch
 def test_subnet_with_substreams(net, discard):
     # tracing = True
-    net.add_component("Generate", GenSS, COUNT=15)
+    gen = net.add_component("Generate", GenSS, COUNT=15)
+    passnet = net.add_component("Subnet", PassthruNet)
     dis = net.add_component("Discard", discard)
-    net.add_component("Subnet", PassthruNet)
 
     net.connect("Generate.OUT", "Subnet.IN")
     net.connect("Subnet.OUT", "Discard.IN")
+
+    # net.reset()
+    # net._build_runners()
+    # net._open_ports()
+    # assert isinstance(passnet.ports['OUT'].component, Passthru)
+    # assert isinstance(passnet.ports['OUT'].sender, ComponentRunner)
+    # assert isinstance(passnet.ports['IN'].component, Passthru)
+    # assert isinstance(passnet.ports['IN'].receiver, ComponentRunner)
+
 
     # FIXME: need a separate test for the NULL port behavior
     # net.connect("Subnet.*SUBEND", "WTC.IN")

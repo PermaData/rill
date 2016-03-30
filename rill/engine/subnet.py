@@ -1,12 +1,13 @@
 from abc import ABCMeta, abstractmethod
 
 from future.utils import with_metaclass
+from past.builtins import basestring
 
 from rill.engine.component import Component, inport, outport, logger
 from rill.engine.network import Network
 from rill.engine.status import StatusValues
-from rill.engine.inputport import InputPort
-from rill.engine.outputport import OutputPort
+from rill.engine.inputport import InputPort, BaseInputCollection
+from rill.engine.outputport import OutputPort, BaseOutputCollection
 from rill.engine.exceptions import FlowError
 from rill.engine.packet import Packet
 
@@ -15,16 +16,20 @@ from rill.engine.packet import Packet
 @inport("INDEX", type=int)
 @outport("OUT")
 class SubIn(Component):
+    """
+    Acts as a proxy between an input port on the SubNet and an input port on
+    one of its internal components.
+    """
     def execute(self):
-        pname = self.inports.NAME.receive_once()
+        pname = self.ports.NAME.receive_once()
         if pname is None:
             return
 
-        if self.outports.OUT.is_closed():
+        if self.ports.OUT.is_closed():
             return
 
-        inport = self.parent.inports[pname]
-        index = self.inports.INDEX.receive_once()
+        inport = self.parent.ports[pname]
+        index = self.ports.INDEX.receive_once()
         if index is not None:
             inport = inport[index]
 
@@ -38,7 +43,7 @@ class SubIn(Component):
 
             p = iic.receive()
             p.set_owner(self)
-            self.outports.OUT.send(p)
+            self.ports.OUT.send(p)
             iic.close()
         else:
             old_receiver = inport.component
@@ -46,7 +51,7 @@ class SubIn(Component):
 
             for p in inport:
                 p.set_owner(self)
-                self.outports.OUT.send(p)
+                self.ports.OUT.send(p)
 
         # inport.close()
         self.logger.debug("Releasing input port: {}".format(inport))
@@ -59,13 +64,13 @@ class SubIn(Component):
 @outport("OUT")
 class SubInSS(Component):
     def execute(self):
-        pname = self.inports.NAME.receive_once()
+        pname = self.ports.NAME.receive_once()
 
-        if self.outports.OUT.is_closed():
+        if self.ports.OUT.is_closed():
             return
 
-        inport = self.parent.inports[pname]
-        index = self.inports.INDEX.receive_once()
+        inport = self.parent.ports[pname]
+        index = self.ports.INDEX.receive_once()
         if index is not None:
             inport = inport[index]
 
@@ -81,7 +86,7 @@ class SubInSS(Component):
             p.set_owner(self)
             if p.get_type() == Packet.Type.OPEN:
                 if level > 0:
-                    self.outports.OUT.send(p)
+                    self.ports.OUT.send(p)
                 else:
                     self.drop(p)
                     self.logger.debug("open bracket detected")
@@ -89,14 +94,14 @@ class SubInSS(Component):
             elif p.get_type() == Packet.Type.CLOSE:
                 if level > 1:
                     # pass on nested brackets
-                    self.outports.OUT.send(p)
+                    self.ports.OUT.send(p)
                     level -= 1
                 else:
                     self.drop(p)
                     self.logger.debug("close bracket detected")
                     break
             else:
-                self.outports.OUT.send(p)
+                self.ports.OUT.send(p)
 
         self.logger.debug("Releasing input port: {}".format(inport))
         # inport.set_receiver(old_receiver)
@@ -107,20 +112,24 @@ class SubInSS(Component):
 @inport("NAME", type=str)
 @inport("INDEX", type=int)
 class SubOut(Component):
+    """
+    Acts as a proxy between an output port on the SubNet and an output port on
+    one of its internal components.
+    """
     def execute(self):
-        pname = self.inports.NAME.receive_once()
+        pname = self.ports.NAME.receive_once()
         if pname is None:
             return
 
-        outport = self.parent.outports[pname]
-        index = self.inports.INDEX.receive_once()
+        outport = self.parent.ports[pname]
+        index = self.ports.INDEX.receive_once()
         if index is not None:
             outport = outport[index]
 
         self.logger.debug("Accessing output port: {}".format(outport))
         outport.component = self
 
-        for p in self.inports.IN:
+        for p in self.ports.IN:
             outport.send(p)
 
         self.logger.debug("Releasing output port: {}".format(outport))
@@ -138,12 +147,12 @@ class SubOutSS(Component):
     """
 
     def execute(self):
-        pname = self.inports.NAME.receive_once()
+        pname = self.ports.NAME.receive_once()
         if pname is None:
             return
 
-        outport = self.parent.outports[pname]
-        index = self.inports.INDEX.receive_once()
+        outport = self.parent.ports[pname]
+        index = self.ports.INDEX.receive_once()
         if index is not None:
             outport = outport[index]
 
@@ -153,7 +162,7 @@ class SubOutSS(Component):
         p = self.create(Packet.Type.OPEN)
         outport.send(p)
 
-        for p in self.inports.IN:
+        for p in self.ports.IN:
             outport.send(p)
 
         p = self.create(Packet.Type.CLOSE)
@@ -163,15 +172,22 @@ class SubOutSS(Component):
 
 
 class SubNet(with_metaclass(ABCMeta, Network, Component)):
-    def __init__(self, name, parent):
+    def __init__(self, name, parent, **kwargs):
         Component.__init__(self, name, parent)
-        Network.__init__(self)
+        # don't do deadlock testing in subnets - you need to consider
+        # the whole net!
+        kwargs['deadlock_test_interval'] = None
+        Network.__init__(self, **kwargs)
 
     @abstractmethod
     def define(self):
         raise NotImplementedError
 
-    def export(self, internal_port, external_port):
+    def _init(self):
+        super(SubNet, self)._init()
+        self.define()
+
+    def export(self, internal_port, external_port, create=False):
         """
         Expose a port.
 
@@ -184,32 +200,48 @@ class SubNet(with_metaclass(ABCMeta, Network, Component)):
                         ``rill.engine.inputport.InputPort`` or str
             internal port
         """
+        # using a component to proxy each exported port has a few side effects:
+        # - additional logging output for the extra components
+        # - additional threads which aren't necessary
+        # - packets are temporarily owned by the SubNet
+        # but it plays well with the rest of the system in a way that is
+        # difficult to achieve otherwise. For example, simply exposing the
+        # internal ports doesn't work because the port's component attr is not
+        # the SubNet, and so the SubNet is never activated by OutputPort.send()
+
         # FIXME: support exporting an array port to array port. currently,
         # if you try to do that you'll end up exporting the first element
-        external_port = self.port(external_port)
-
+        internal_port = self.get_component_port(internal_port)
+        if create:
+            # create a new port on the SubNet based on the exported port
+            def_cls = inport if internal_port.kind == 'in' else outport
+            external_port_name = external_port
+            assert isinstance(external_port_name, basestring)
+            portdef = def_cls.from_port(internal_port)
+            external_port = portdef.create_port(self)
+            self.ports[external_port_name] = external_port
+        else:
+            external_port = self.port(external_port, kind=internal_port.kind)
         if external_port.is_array():
             external_port = external_port.get_element(create=True)
 
         if isinstance(external_port, InputPort):
-            internal_port = self.get_component_port(internal_port,
-                                                    kind='in')
             subcomp = self.add_component('_' + external_port.name, SubIn,
                                          NAME=external_port._name)
             if external_port.index is not None:
-                self.initialize(external_port.index, subcomp.inports.INDEX)
-            self.connect(subcomp.outports.OUT, internal_port)
+                self.initialize(external_port.index, subcomp.ports.INDEX)
+            self.connect(subcomp.ports.OUT, internal_port)
         elif isinstance(external_port, OutputPort):
-            internal_port = self.get_component_port(internal_port,
-                                                    kind='out')
             subcomp = self.add_component('_' + external_port.name, SubOut,
                                          NAME=external_port._name)
             if external_port.index is not None:
-                self.initialize(external_port.index, subcomp.inports.INDEX)
-            self.connect(internal_port, subcomp.inports.IN)
+                self.initialize(external_port.index, subcomp.ports.INDEX)
+            self.connect(internal_port, subcomp.ports.IN)
+
 
     def execute(self):
-        self.get_components().clear()
+        # self.get_components().clear()
+        # FIXME:
         sub_end_port = None  # self.outports.get("*SUBEND")
         sub_in_port = None  # self.inports.get("*CONTROL")
         if sub_in_port is not None:
@@ -225,21 +257,19 @@ class SubNet(with_metaclass(ABCMeta, Network, Component)):
         # creation in define(), which would be great, then it needs to be run
         # during the net creation phase to know what the ports are. or provide
         # variable to control when it gets run...
-        self.define()
+        # self.define()
         # FIXME: warn if any external ports have not been connected
 
         # if not all(c._check_required_ports() for c in
         #            self.get_components().values()):
         #     raise FlowError(
         #         "One or more mandatory connections have been left unconnected: " + self.get_name())
+
+        # FIXME: handle resume!
         self.initiate()
         # activate_all()
-        # don't do deadlock testing in subnets - you need to consider
-        # the whole net!
-        self.deadlock_test = False
         self.wait_for_all()
-
-        for ip in self.inports.ports():
+        for ip in self.inports:
             if ip.is_static():
                 ip.close()
 

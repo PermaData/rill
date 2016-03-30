@@ -1,6 +1,46 @@
 from rill import *
 from rill.fn import range
 
+
+@component(pass_context=True)
+@inport("IN")
+@outport("OUT")
+def Passthru(self, IN, OUT):
+    """Pass a stream of packets to an output stream"""
+    self.values = []
+    for p in IN.iter_packets():
+        self.values.append(p.get_contents())
+        OUT.send(p)
+
+
+@inport("IN", description="Stream of packets to be discarded")
+class Discard(Component):
+    def execute(self):
+        p = self.ports.IN.receive()
+        if p is None:
+            return
+        self.packets.append(p)
+        self.values.append(p.get_contents())
+        self.drop(p)
+
+    def init(self):
+        self.values = []
+        self.packets = []
+
+
+@inport("IN", description="Stream of packets to be discarded")
+class DiscardLooper(Component):
+    def execute(self):
+        for p in self.ports.IN:
+            self.packets.append(p)
+            self.values.append(p.get_contents())
+            self.drop(p)
+
+    def init(self):
+        self.values = []
+        self.packets = []
+
+
 @component
 @outport("OUT", description="Generated stream", type=str)
 @inport("COUNT", description="Count of packets to be generated", type=int,
@@ -114,3 +154,12 @@ def GenSS(COUNT, OUT):
                 OUT.send(Packet.Type.CLOSE)
                 OUT.send(Packet.Type.OPEN)
     OUT.send(Packet.Type.CLOSE)
+
+
+@outport("OUT")
+@inport("IN")
+class PassthruNet(SubNet):
+    def define(self):
+        self.add_component("Pass", Passthru)
+        self.export("Pass.OUT", "OUT")
+        self.export("Pass.IN", "IN")

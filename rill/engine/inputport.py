@@ -4,7 +4,7 @@ from collections import deque
 from future.utils import with_metaclass
 
 from rill.engine.status import StatusValues
-from rill.engine.port import Port, ArrayPort, PortCollection, PortInterface
+from rill.engine.port import Port, ArrayPort, BasePortCollection, PortInterface
 from rill.engine.exceptions import FlowError
 from rill.utils import NOT_SET
 
@@ -17,6 +17,7 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
     """
     Enforces a common interface for all classes which receive packets
     """
+    kind = 'in'
 
     @property
     def receiver(self):
@@ -490,7 +491,7 @@ class Connection(ConnectionInterface):
             if self.receiver.is_terminated() or self.receiver.has_error():
                 return None
 
-            self.receiver.logger.debug("Recveive resumed", port=self.inport)
+            self.receiver.logger.debug("Receive resumed", port=self.inport)
             self.receiver.status = StatusValues.ACTIVE
 
             if self.is_drained():
@@ -634,6 +635,7 @@ class Connection(ConnectionInterface):
 class InputArray(ArrayPort, PortInterface):
     valid_classes = (InputInterface,)
     port_class = InputPort
+    kind = 'in'
 
     def __init__(self, component, name, default=NOT_SET, static=False,
                  **kwargs):
@@ -647,17 +649,17 @@ class InputArray(ArrayPort, PortInterface):
                                default=self.default, static=self.auto_receive)
 
 
-class BaseInputCollection(PortCollection):
+class BaseInputCollection(BasePortCollection, InputInterface):
     """Base class for input port collections"""
     valid_classes = (InputInterface, InputArray)
 
 
-class InputCollection(BaseInputCollection, PortInterface):
-    def __iter__(self):
-        return self.iter_ports()
+# class InputCollection(BaseInputCollection, PortInterface):
+#     def __iter__(self):
+#         return self.iter_ports()
 
 
-class EagerInputCollection(BaseInputCollection, InputInterface):
+class EagerInputCollection(BaseInputCollection):
     """
     Provides methods for receiving from the first ready port within the
     collection.
@@ -716,7 +718,7 @@ class EagerInputCollection(BaseInputCollection, InputInterface):
             return port.receive()
 
 
-class SynchronizedInputCollection(BaseInputCollection, InputInterface):
+class SynchronizedInputCollection(BaseInputCollection):
     """
     Provides methods for synchronizing the receipt of packets from a collection
     of ports.

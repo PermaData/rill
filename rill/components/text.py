@@ -106,7 +106,7 @@ def LineToWords(IN, OUT):
     """Take space-separated words in a record IN and deliver individual words
     OUT"""
     for line in IN.iter_contents():
-        words = line.split(" ")
+        words = line.split()
         for word in words:
             OUT.send(word)
 

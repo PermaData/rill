@@ -2,7 +2,7 @@ from abc import ABCMeta, abstractmethod
 
 from future.utils import with_metaclass
 
-from rill.engine.port import Port, ArrayPort, PortCollection, PortInterface
+from rill.engine.port import Port, ArrayPort, BasePortCollection, PortInterface
 from rill.engine.packet import Packet
 
 
@@ -10,6 +10,7 @@ class OutputInterface(with_metaclass(ABCMeta, PortInterface)):
     """
     Enforces a common interface for all classes which send packets
     """
+    kind = 'out'
 
     @property
     def sender(self):
@@ -146,19 +147,20 @@ class OutputPort(Port, OutputInterface):
 class OutputArray(ArrayPort, PortInterface):
     valid_classes = (OutputInterface,)
     port_class = OutputPort
+    kind = 'out'
 
 
-class BaseOuputCollection(PortCollection):
+class BaseOutputCollection(BasePortCollection, OutputInterface):
     """Base class for output port collections"""
     valid_classes = (OutputInterface, OutputArray)
 
 
-class OutputCollection(BaseOuputCollection, PortInterface):
-    def __iter__(self):
-        return self.iter_ports()
+# class OutputCollection(BaseOuputCollection, PortInterface):
+#     def __iter__(self):
+#         return self.iter_ports()
 
 
-class LoadBalancedOutputCollection(BaseOuputCollection, OutputInterface):
+class LoadBalancedOutputCollection(BaseOutputCollection):
     """
     Provides methods for sending to the optimal port within the collection.
     """
@@ -190,7 +192,7 @@ class LoadBalancedOutputCollection(BaseOuputCollection, OutputInterface):
 import gevent.pool
 
 
-class ForkedOutputCollection(BaseOuputCollection, OutputInterface):
+class ForkedOutputCollection(BaseOutputCollection):
     def send(self, packet):
         """
         """

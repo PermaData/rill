@@ -153,10 +153,15 @@ class Network(object):
 
     def get_component_port(self, arg, index=None, kind=None):
         """
+        Get a port on a component.
+
         Parameters
         ----------
         arg : ``rill.engine.outputport.OutputPort`` or
             ``rill.engine.inputport.InputPort`` or str
+        index : int or None
+            index of element, if port is an array. If None, the next available
+            index is used
         kind : {'in', 'out'}
 
         Returns
@@ -166,6 +171,9 @@ class Network(object):
         """
         if isinstance(arg, (OutputPort, OutputArray, InputPort, InputArray)):
             port = arg
+            if kind is not None and port.kind != kind:
+                raise FlowError(
+                    "Expected {}port: got {}".format(kind, type(port)))
         else:
             if isinstance(arg, (tuple, list)):
                 comp_name, port_name = arg
@@ -177,13 +185,8 @@ class Network(object):
             comp = self.component(comp_name)
             port = comp.port(port_name, kind=kind)
 
-        if port.is_array():
+        if port.is_array() and index is not False:
             port = port.get_element(index, create=True)
-
-        if kind == 'in' and not isinstance(port, InputPort):
-            raise TypeError("Expected InputPort, got {}".format(type(port)))
-        elif kind == 'out' and not isinstance(port, OutputPort):
-            raise TypeError("Expected OutputPort, got {}".format(type(port)))
 
         return port
 
@@ -224,9 +227,9 @@ class Network(object):
         """
         inport = self.get_component_port(receiver, kind='in')
 
-        if inport.name == 'NULL':
+        if inport.name == 'IN_NULL':
             raise FlowError(
-                "Cannot initialize NULL port: {}".format(inport))
+                "Cannot initialize null port: {}".format(inport))
 
         inport.initialize(content)
 
@@ -240,9 +243,9 @@ class Network(object):
         """
         inport = self.get_component_port(receiver, kind='in')
 
-        if inport.name == 'NULL':
+        if inport.name == 'IN_NULL':
             raise FlowError(
-                "Cannot uninitialize NULL port: {}".format(inport))
+                "Cannot uninitialize null port: {}".format(inport))
 
         inport.uninitialize()
 
@@ -298,7 +301,7 @@ class Network(object):
         comp.status = StatusValues.TERMINATED
         # -- end
         logger.debug("{}: Terminated", args=[comp])
-        self.cdl.count_down()
+        # self.cdl.count_down()
         # net.interrupt()
 
     def _build_runners(self):
@@ -340,7 +343,7 @@ class Network(object):
                 runner.auto_starting = True
 
                 if not runner.component._self_starting:
-                    for port in runner.inports.ports():
+                    for port in runner.inports:
                         if port.is_connected() and not port.is_static():
                             runner.auto_starting = False
                             break
@@ -367,7 +370,7 @@ class Network(object):
             runner.auto_starting = True
 
             if not runner.component._self_starting:
-                for port in runner.inports.ports():
+                for port in runner.inports:
                     if port.is_connected() and not port.is_static():
                         runner.auto_starting = False
                         break

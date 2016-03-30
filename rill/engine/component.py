@@ -5,8 +5,9 @@ from abc import ABCMeta, abstractmethod
 
 from future.utils import with_metaclass, raise_from
 
-from rill.engine.outputport import OutputPort, OutputArray, OutputCollection
-from rill.engine.inputport import InputPort, InputArray, InputCollection
+from rill.engine.port import PortCollection
+from rill.engine.outputport import OutputPort, OutputArray
+from rill.engine.inputport import InputPort, InputArray
 from rill.engine.packet import Packet, Chain
 from rill.engine.exceptions import FlowError, ComponentException
 from rill.engine.utils import LogFormatter
@@ -28,9 +29,11 @@ _logger.setLevel(logging.DEBUG)
 logger = LogFormatter(_logger, {})
 
 
+@inport('IN_NULL')
+@outport('OUT_NULL')
 class Component(with_metaclass(ABCMeta, object)):
-    _inport_definitions = []
-    _outport_definitions = []
+    inport_definitions = []
+    outport_definitions = []
     _self_starting = False
     _must_run = False
 
@@ -55,9 +58,7 @@ class Component(with_metaclass(ABCMeta, object)):
         self._runner = None
 
         # All the input ports are stored here, keyed by name.
-        self.inports = None
-        # All the output ports are stored here, keyed by name.
-        self.outports = None
+        self.ports = None
 
         # a stack available to each component
         self._stack = collections.deque()
@@ -83,38 +84,17 @@ class Component(with_metaclass(ABCMeta, object)):
             self.__dict__[key] = value
         self.logger = logger
 
-    def _create_port(self, port):
-        if port.args.get('fixed_size') and not port.array:
-            raise ValueError(
-                "{}.{}: @{} specified fixed_size but not array".format(
-                    self, port.args['name'],
-                    port.__class__.__name__))
-        if port.array:
-            ptype = port._array_port_type
-        else:
-            ptype = port._static_port_type
-        return ptype(self, **port.args)
-
     def _init(self):
         """
         Initialize internal attributes.
         """
-        inports = self._inport_definitions
-        outports = self._outport_definitions
-        # Enforce unique names between input and output ports. This ensures
-        # that _FunctionComponent functions can receive a named argument per
-        # port
-        names = [p.args['name'] for p in inports + outports]
-        dupes = [x for x, count in collections.Counter(names).items()
-                 if count > 1]
-        if dupes:
-            self.error(
-                "Duplicate port names: {}".format(', '.join(dupes)))
-
-        self.inports = InputCollection(
-            self, [self._create_port(p) for p in inports + [inport('NULL')]])
-        self.outports = OutputCollection(
-            self, [self._create_port(p) for p in outports + [outport('NULL')]])
+        ports = []
+        ports.extend(inport.get_inherited(self.__class__))
+        print self, [p.args['name'] for p in ports]
+        ports.extend(outport.get_inherited(self.__class__))
+        print self, [p.args['name'] for p in ports]
+        self.ports = PortCollection(
+            self, [p.create_port(self) for p in ports])
 
     def get_parents(self):
         """
@@ -181,6 +161,18 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
+    @property
+    def inports(self):
+        for port in self.ports:
+            if port.kind == 'in':
+                yield port
+
+    @property
+    def outports(self):
+        for port in self.ports:
+            if port.kind == 'out':
+                yield port
+
     def port(self, port_name, kind=None):
         """
         Get a port on the component.
@@ -207,27 +199,13 @@ class Component(with_metaclass(ABCMeta, object)):
         if index is not None:
             index = int(index)
 
-        if kind == 'in':
-            try:
-                port = self.inports[port_name]
-            except KeyError as err:
-                raise_from(FlowError(str(err)), err)
-        elif kind == 'out':
-            try:
-                port = self.outports[port_name]
-            except KeyError as err:
-                raise_from(FlowError(str(err)), err)
-        elif not kind:
-            try:
-                port = self.outports[port_name]
-            except KeyError:
-                try:
-                    port = self.inports[port_name]
-                except KeyError:
-                    raise FlowError("{} is not a registered input or "
-                                    "output port".format(port_name))
-        else:
-            raise TypeError(kind)
+        try:
+            port = self.ports[port_name]
+        except KeyError as err:
+            raise FlowError(str(err))
+
+        if kind is not None and port.kind != kind:
+            raise FlowError("Expected {}port: got {}".format(kind, type(port)))
 
         if index is not None:
             if not port.is_array():
@@ -461,10 +439,12 @@ class _FunctionComponent(with_metaclass(ABCMeta, Component)):
         args = []
         if self._pass_context:
             args.append(self)
-        for port in self.inports.root_ports():
-            if port.auto_receive:
+        for port in self.ports.root_ports():
+            # currently inports are listed first regardless of decorator order,
+            # but we may eventually respect decorator order.
+            # FIXME: order may still be a concern for dynamically created ports
+            if port.kind == 'in' and port.auto_receive:
                 args.append(port.receive_once())
             else:
                 args.append(port)
-        args.extend(self.outports.root_ports())
         self._execute(*args)

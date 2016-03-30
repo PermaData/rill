@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 
 from future.utils import with_metaclass
 from future.utils import raise_from
@@ -17,12 +17,22 @@ def flatten_collections(ports):
             yield port
 
 
+def flatten_arrays(ports):
+    for port in ports:
+        if port.is_array():
+            for elem in port.ports():
+                yield elem
+        else:
+            yield port
+
+
 class PortInterface(with_metaclass(ABCMeta, object)):
     """
     Enforces an interface for a basic port that can be opened and closed.
 
     Used by ``ArrayPort``, ``OutputPortInterface`` and ``InputPortInterface``
     """
+    kind = None
 
     @abstractmethod
     def is_connected(self):
@@ -376,7 +386,7 @@ class ArrayPort(BasePort, PortContainerMixin):
         return True
 
 
-class PortCollection(PortContainerMixin):
+class BasePortCollection(PortContainerMixin):
     """
     Holds a collection of ports and provides iteration and lookup by
     name.
@@ -385,10 +395,22 @@ class PortCollection(PortContainerMixin):
     ``OutputCollection`.
     """
 
+    valid_classes = (BasePort,)
+
     def __init__(self, component, ports):
         self.component = component
-        self._ports = OrderedDict((p.name, p) for p
-                                  in flatten_collections(ports))
+
+        ports = list(flatten_collections(ports))
+        # Enforce unique names between input and output ports. This ensures
+        # that _FunctionComponent functions can receive a named argument per
+        # port
+        names = [p.name for p in ports]
+        dupes = [n for n, count in Counter(names).items() if count > 1]
+        if dupes:
+            self.component.error(
+                "Duplicate port names: {}".format(', '.join(dupes)))
+
+        self._ports = OrderedDict((p.name, p) for p in ports)
         self.check_port_types()
         for pname, port in self._ports.items():
             setattr(self, pname, port)
@@ -404,7 +426,7 @@ class PortCollection(PortContainerMixin):
         # cast to list for python 3 compat
         ports = list(self._ports.values())
         if not include_null:
-            ports = [p for p in ports if p.name != 'NULL']
+            ports = [p for p in ports if p.name not in ('IN_NULL', 'OUT_NULL')]
         return ports
 
     def iter_ports(self):
@@ -416,12 +438,8 @@ class PortCollection(PortContainerMixin):
         ``rill.engine.inputport.InputPort`` or
         ``rill.engine.outputport.OutputPort``
         """
-        for port in self.root_ports():
-            if port.is_array():
-                for elem in port.ports():
-                    yield elem
-            else:
-                yield port
+        for port in flatten_arrays(self.root_ports()):
+            yield port
 
     def open(self):
         """
@@ -451,3 +469,12 @@ class PortCollection(PortContainerMixin):
     #     port = self._ports.pop('NULL')
     #     if port.is_connected():
     #         return port
+
+
+class PortCollection(BasePortCollection):
+    def __iter__(self):
+        return self.iter_ports()
+
+    def __setitem__(self, item, port):
+        self._ports[item] = port
+        setattr(self, item, port)

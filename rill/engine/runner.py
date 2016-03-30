@@ -34,6 +34,8 @@ class ComponentRunner(Greenlet):
         self.network = component.network
         self._must_run = component._must_run
         self._self_starting = component._self_starting
+        self.ports = component.ports
+
         self.auto_starting = False
 
         self.timeout = None
@@ -97,19 +99,17 @@ class ComponentRunner(Greenlet):
         list of Exception
         """
         errors = []
-        for container in [self.inports, self.outports]:
-            try:
-                container.open()
-            except FlowError as e:
-                errors.append(str(e))
+        try:
+            self.ports.open()
+        except FlowError as e:
+            errors.append(str(e))
         return errors
 
     def _close_ports(self):
         """
         Close all ports.
         """
-        self.outports.close()
-        self.inports.close()
+        self.ports.close()
 
     # Statuses --
 
@@ -221,7 +221,7 @@ class ComponentRunner(Greenlet):
             self.trace_locks("input states - acquired")
             with self._lock:
                 while True:
-                    conns = [c._connection for c in self.inports.ports()
+                    conns = [c._connection for c in self.inports
                              if c.is_connected()]
                     all_drained = all(c.is_drained() for c in conns)
                     has_data = any(not c.is_empty() for c in conns)
@@ -253,11 +253,11 @@ class ComponentRunner(Greenlet):
 
             self.status = StatusValues.ACTIVE
             self.trace_funcs("Started")
-            if self.inports.NULL.is_connected():
-                self._null_input = self.inports.NULL
+            if self.ports.IN_NULL.is_connected():
+                self._null_input = self.ports.IN_NULL
                 self._null_input.receive_once()
-            if self.outports.NULL.is_connected():
-                self._null_output = self.outports.NULL
+            if self.ports.OUT_NULL.is_connected():
+                self._null_output = self.ports.OUT_NULL
 
             if self._self_starting:
                 self.auto_starting = True
@@ -275,7 +275,7 @@ class ComponentRunner(Greenlet):
                 if self.is_terminated() or self.has_error():
                     break
 
-                for value in self.inports.ports():
+                for value in self.inports:
                     if value.is_static():
                         value.open()
 
@@ -297,7 +297,7 @@ class ComponentRunner(Greenlet):
                 # - _await_actionable_input_state only checks Connections.
                 # - tests succeed if we simply hard-wire InitializationConnection to always open
                 # - it ensures that it yields a new result when component is re-activated
-                for ip in self.inports.ports():
+                for ip in self.inports:
                     if ip.is_static():
                         ip.close()
                         # if (not icp.is_closed()):

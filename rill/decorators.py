@@ -26,6 +26,18 @@ class _Port(Annotation):
             self.args['fixed_size'] = fixed_size
         super(_Port, self).__init__(self)
 
+    def create_port(self, component):
+        if self.args.get('fixed_size') and not self.array:
+            raise ValueError(
+                "{}.{}: @{} specified fixed_size but not array".format(
+                    self, self.args['name'],
+                    self.__class__.__name__))
+        if self.array:
+            ptype = self._array_port_type
+        else:
+            ptype = self._static_port_type
+        return ptype(component, **self.args)
+
 
 class inport(_Port):
     """
@@ -42,6 +54,14 @@ class inport(_Port):
         self.args['static'] = static
         self.args['default'] = default
 
+    @classmethod
+    def from_port(cls, port):
+        return cls(port._name, type=port.type, array=port.is_array(),
+                   fixed_size=port.fixed_size if port.is_array() else None,
+                   description=port.description,
+                   optional=port.optional, static=port.auto_receive,
+                   default=port.default)
+
 
 class outport(_Port):
     """
@@ -49,6 +69,13 @@ class outport(_Port):
     """
     attribute = 'outport_definitions'
     _kind = 'output'
+
+    @classmethod
+    def from_port(cls, port):
+        return cls(port._name, type=port.type, array=port.is_array(),
+                   fixed_size=port.fixed_size if port.is_array() else None,
+                   description=port.description,
+                   optional=port.optional)
 
 
 # FIXME: could be a nice feature to make users add an explanation, e.g.
