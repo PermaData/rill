@@ -3,9 +3,9 @@ import logging
 import re
 from abc import ABCMeta, abstractmethod
 
-from future.utils import with_metaclass, raise_from
+from future.utils import with_metaclass
 
-from rill.engine.port import PortCollection
+from rill.engine.port import PortCollection, flatten_arrays, is_null_port
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import InputPort, InputArray
 from rill.engine.packet import Packet, Chain
@@ -90,9 +90,7 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         ports = []
         ports.extend(inport.get_inherited(self.__class__))
-        print self, [p.args['name'] for p in ports]
         ports.extend(outport.get_inherited(self.__class__))
-        print self, [p.args['name'] for p in ports]
         self.ports = PortCollection(
             self, [p.create_port(self) for p in ports])
 
@@ -163,14 +161,14 @@ class Component(with_metaclass(ABCMeta, object)):
 
     @property
     def inports(self):
-        for port in self.ports:
-            if port.kind == 'in':
+        for port in flatten_arrays(self.ports):
+            if port.kind == 'in' and not is_null_port(port):
                 yield port
 
     @property
     def outports(self):
-        for port in self.ports:
-            if port.kind == 'out':
+        for port in flatten_arrays(self.ports):
+            if port.kind == 'out' and not is_null_port(port):
                 yield port
 
     def port(self, port_name, kind=None):
@@ -439,9 +437,12 @@ class _FunctionComponent(with_metaclass(ABCMeta, Component)):
         args = []
         if self._pass_context:
             args.append(self)
-        for port in self.ports.root_ports():
+        for port in self.ports:
+            if is_null_port(port):
+                continue
             # currently inports are listed first regardless of decorator order,
             # but we may eventually respect decorator order.
+            # note that the in-then-out order is determined in Component._init.
             # FIXME: order may still be a concern for dynamically created ports
             if port.kind == 'in' and port.auto_receive:
                 args.append(port.receive_once())

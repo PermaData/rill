@@ -2,7 +2,8 @@ from abc import ABCMeta, abstractmethod
 
 from future.utils import with_metaclass
 
-from rill.engine.port import Port, ArrayPort, BasePortCollection, PortInterface
+from rill.engine.port import (Port, ArrayPort, BasePortCollection,
+                              PortInterface)
 from rill.engine.packet import Packet
 
 
@@ -145,14 +146,14 @@ class OutputPort(Port, OutputInterface):
 
 
 class OutputArray(ArrayPort, PortInterface):
-    valid_classes = (OutputInterface,)
+    _valid_classes = (OutputInterface,)
     port_class = OutputPort
     kind = 'out'
 
 
 class BaseOutputCollection(BasePortCollection, OutputInterface):
     """Base class for output port collections"""
-    valid_classes = (OutputInterface, OutputArray)
+    _valid_classes = (OutputInterface, OutputArray)
 
 
 # class OutputCollection(BaseOuputCollection, PortInterface):

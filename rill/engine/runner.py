@@ -100,7 +100,8 @@ class ComponentRunner(Greenlet):
         """
         errors = []
         try:
-            self.ports.open()
+            for port in self.ports:
+                port.open()
         except FlowError as e:
             errors.append(str(e))
         return errors
@@ -109,7 +110,8 @@ class ComponentRunner(Greenlet):
         """
         Close all ports.
         """
-        self.ports.close()
+        for port in self.ports:
+            port.close()
 
     # Statuses --
 

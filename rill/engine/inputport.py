@@ -4,7 +4,8 @@ from collections import deque
 from future.utils import with_metaclass
 
 from rill.engine.status import StatusValues
-from rill.engine.port import Port, ArrayPort, BasePortCollection, PortInterface
+from rill.engine.port import (Port, ArrayPort, BasePortCollection,
+                              PortInterface)
 from rill.engine.exceptions import FlowError
 from rill.utils import NOT_SET
 
@@ -633,7 +634,7 @@ class Connection(ConnectionInterface):
 
 
 class InputArray(ArrayPort, PortInterface):
-    valid_classes = (InputInterface,)
+    _valid_classes = (InputInterface,)
     port_class = InputPort
     kind = 'in'
 
@@ -651,7 +652,7 @@ class InputArray(ArrayPort, PortInterface):
 
 class BaseInputCollection(BasePortCollection, InputInterface):
     """Base class for input port collections"""
-    valid_classes = (InputInterface, InputArray)
+    _valid_classes = (InputInterface, InputArray)
 
 
 # class InputCollection(BaseInputCollection, PortInterface):

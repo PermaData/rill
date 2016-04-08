@@ -8,6 +8,14 @@ from rill.engine.types import get_type_handler
 from rill.engine.exceptions import FlowError
 
 
+def is_null_port(port):
+    if port.kind == 'in' and port.name == 'IN_NULL':
+        return True
+    elif port.kind == 'out' and port.name == 'OUT_NULL':
+        return True
+    return False
+
+
 def flatten_collections(ports):
     for port in ports:
         if isinstance(port, PortCollection):
@@ -28,24 +36,14 @@ def flatten_arrays(ports):
 
 class PortInterface(with_metaclass(ABCMeta, object)):
     """
-    Enforces an interface for a basic port that can be opened and closed.
+    Enforces an interface for a basic port.
 
-    Used by ``ArrayPort``, ``OutputPortInterface`` and ``InputPortInterface``
+    These can be either "real" ports, like ``InputPort`` and ``OutputPort``
+    or "virtual" ports that implement ``OutputPortInterface`` or
+    ``InputPortInterface`` for sending or receiving.  Only "real" ports
+    (sublcasses of ``BasePort``) can be opened.
     """
     kind = None
-
-    @abstractmethod
-    def is_connected(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def open(self):
-        """
-        Open the port.
-
-        Internal use only
-        """
-        raise NotImplementedError
 
     @abstractmethod
     def close(self):
@@ -122,6 +120,15 @@ class BasePort(with_metaclass(ABCMeta, object)):
         return self.index is not None
 
     @abstractmethod
+    def open(self):
+        """
+        Open the port.
+
+        Internal use only
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def is_array(self):
         raise NotImplementedError
 
@@ -182,15 +189,15 @@ class PortContainerMixin(with_metaclass(ABCMeta, object)):
     Provides functionality common to classes which are containers for ports.
     """
 
-    valid_classes = None
+    _valid_classes = None
 
-    def check_port_types(self):
+    def _check_port_types(self):
         offenders = [p for p in self.ports()
-                     if not isinstance(p, self.valid_classes)]
+                     if not isinstance(p, self._valid_classes)]
         if offenders:
             raise ValueError(
                 "{}: ports must all be instances of {}: {}".format(
-                    self.__class__.__name__, self.valid_classes,
+                    self.__class__.__name__, self._valid_classes,
                     ', '.join(repr(o) for o in offenders)))
 
     @abstractmethod
@@ -220,6 +227,13 @@ class PortContainerMixin(with_metaclass(ABCMeta, object)):
         """
         return list(self.iter_ports())
 
+    def close(self):
+        """
+        Close all the ports held by this container
+        """
+        for port in self.ports():
+            port.close()
+
     def is_closed(self):
         """
         Return whether all child ports are closed.
@@ -229,16 +243,6 @@ class PortContainerMixin(with_metaclass(ABCMeta, object)):
         bool
         """
         return all(p.is_closed() for p in self.ports())
-
-    def is_connected(self):
-        """
-        Return whether any child ports are connected.
-
-        Returns
-        -------
-        bool
-        """
-        return any(p.is_connected() for p in self.ports())
 
 
 class ArrayPort(BasePort, PortContainerMixin):
@@ -355,7 +359,7 @@ class ArrayPort(BasePort, PortContainerMixin):
 
         Prepares ports to receive data.
         """
-        self.check_port_types()
+        self._check_port_types()
 
         if not self.ports() and not self.optional:
             raise FlowError(
@@ -375,13 +379,6 @@ class ArrayPort(BasePort, PortContainerMixin):
         for port in self.ports():
             port.open()
 
-    def close(self):
-        for port in self.ports():
-            port.close()
-
-    def is_connected(self):
-        return False
-
     def is_array(self):
         return True
 
@@ -390,44 +387,19 @@ class BasePortCollection(PortContainerMixin):
     """
     Holds a collection of ports and provides iteration and lookup by
     name.
-
-    For variants which do additional type checking see ``InputCollection` and
-    ``OutputCollection`.
     """
-
-    valid_classes = (BasePort,)
+    # NOTE: we have to be careful about the attributes and methods we add to
+    # this class and its parent because PortCollection provides attribute-based
+    # lookup of ports, which could clash with actual attributes and methods.
+    _valid_classes = (BasePort,)
 
     def __init__(self, component, ports):
         self.component = component
+        self._ports = OrderedDict((p.name, p) for p in self._prep_args(ports))
+        self._check_port_types()
 
-        ports = list(flatten_collections(ports))
-        # Enforce unique names between input and output ports. This ensures
-        # that _FunctionComponent functions can receive a named argument per
-        # port
-        names = [p.name for p in ports]
-        dupes = [n for n, count in Counter(names).items() if count > 1]
-        if dupes:
-            self.component.error(
-                "Duplicate port names: {}".format(', '.join(dupes)))
-
-        self._ports = OrderedDict((p.name, p) for p in ports)
-        self.check_port_types()
-        for pname, port in self._ports.items():
-            setattr(self, pname, port)
-
-    def root_ports(self, include_null=False):
-        """
-        Return the root ports, including array ports but not their children.
-
-        Yields
-        -------
-        ``Port`` or ``ArrayPort``
-        """
-        # cast to list for python 3 compat
-        ports = list(self._ports.values())
-        if not include_null:
-            ports = [p for p in ports if p.name not in ('IN_NULL', 'OUT_NULL')]
-        return ports
+    def _prep_args(self, ports):
+        return flatten_arrays(flatten_collections(ports))
 
     def iter_ports(self):
         """
@@ -438,22 +410,8 @@ class BasePortCollection(PortContainerMixin):
         ``rill.engine.inputport.InputPort`` or
         ``rill.engine.outputport.OutputPort``
         """
-        for port in flatten_arrays(self.root_ports()):
+        for port in self._ports.values():
             yield port
-
-    def open(self):
-        """
-        Open all the ports held by this container
-        """
-        for port in self.root_ports(include_null=True):
-            port.open()
-
-    def close(self):
-        """
-        Close all the ports held by this container
-        """
-        for port in self.root_ports(include_null=True):
-            port.close()
 
     def __getitem__(self, item):
         try:
@@ -472,9 +430,35 @@ class BasePortCollection(PortContainerMixin):
 
 
 class PortCollection(BasePortCollection):
+    """
+    Acts as a Mapping Container for ports, as well as provides attribute-based
+    lookups.
+    """
+    def __init__(self, component, ports):
+        super(PortCollection, self).__init__(component, ports)
+        for pname, port in self._ports.items():
+            setattr(self, pname, port)
+
+    def _prep_args(self, ports):
+        # unlike BasePortCollection, we don't flatten arrays
+        ports = list(flatten_collections(ports))
+        # Enforce unique names between input and output ports. This ensures
+        # that _FunctionComponent functions can receive a named argument per
+        # port
+        names = [p.name for p in ports]
+        dupes = [n for n, count in Counter(names).items() if count > 1]
+        if dupes:
+            self.component.error(
+                "Duplicate port names: {}".format(', '.join(dupes)))
+        return ports
+
     def __iter__(self):
         return self.iter_ports()
+
+    def __len__(self):
+        return len(self._ports)
 
     def __setitem__(self, item, port):
         self._ports[item] = port
         setattr(self, item, port)
+
