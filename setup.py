@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 from setuptools.command.test import test as TestCommand
 
 
-from rill import __version__
+VERSION = '0.1'
 
 
 class Tox(TestCommand):
@@ -61,7 +61,7 @@ if sys.version_info.major < 3:
 
 setup(
     name='rill',
-    version=__version__,
+    version=VERSION,
 
     author='Chad Dombrova',
     author_email='chadrik@gmail.com',
