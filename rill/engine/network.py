@@ -315,7 +315,7 @@ class Network(object):
     def _open_ports(self):
         errors = []
         for runner in self.runners.values():
-            errors += runner._open_ports()
+            errors += runner.open_ports()
         if errors:
             for error in errors:
                 logger.error(error)
@@ -324,7 +324,7 @@ class Network(object):
     def resume(self):
         self_starters = []
         for runner in self.runners.values():
-            for port in runner.inports:
+            for port in runner.component.inports:
                 if port.is_connected() and not port.is_static() and \
                         port._connection._queue:
                     logger.info("Existing data in connection buffer: {}",
@@ -343,7 +343,7 @@ class Network(object):
                 runner.auto_starting = True
 
                 if not runner.component._self_starting:
-                    for port in runner.inports:
+                    for port in runner.component.inports:
                         if port.is_connected() and not port.is_static():
                             runner.auto_starting = False
                             break
@@ -355,7 +355,7 @@ class Network(object):
             raise FlowError("No self-starters found")
 
         for runner in self_starters:
-            runner._activate()
+            runner.activate()
 
     def initiate(self):
         """
@@ -370,7 +370,7 @@ class Network(object):
             runner.auto_starting = True
 
             if not runner.component._self_starting:
-                for port in runner.inports:
+                for port in runner.component.inports:
                     if port.is_connected() and not port.is_static():
                         runner.auto_starting = False
                         break
@@ -382,7 +382,7 @@ class Network(object):
             raise FlowError("No self-starters found")
 
         for runner in self_starters:
-            runner._activate()
+            runner.activate()
 
     def interrupt_all(self):
         """
@@ -472,9 +472,9 @@ class Network(object):
                     terminated = False
 
                 if status == StatusValues.SUSP_RECV:
-                    objs = [runner._curr_conn]
+                    objs = [runner.curr_conn]
                 elif status == StatusValues.SUSP_SEND:
-                    objs = [runner._curr_outport._connection]
+                    objs = [runner.curr_outport._connection]
                 else:
                     objs = [runner]
 

@@ -88,7 +88,7 @@ class OutputPort(Port, OutputInterface):
         bool : if the send was successful
         """
         if not isinstance(packet, Packet):
-            packet = self.sender.create(packet)
+            packet = self.component.create(packet)
 
         # FIXME: Added this check, but it changes behavior slightly from before:  owner check occurs before is_connected
         self.sender.component.validate_packet(packet)
@@ -98,7 +98,7 @@ class OutputPort(Port, OutputInterface):
         #         "{}: Null packet referenced in 'send' method call: " + self.sender.get_name())
 
         if not self.is_connected():
-            self.sender.drop(packet)
+            self.component.drop(packet)
             return False
 
         # if self.sender != packet.owner:
@@ -113,7 +113,7 @@ class OutputPort(Port, OutputInterface):
                                      "packet {}".format(packet),
                                      port=self)
             # FIXME: raise error here? drop the packet?
-            self.sender.drop(packet)
+            self.component.drop(packet)
             return False
 
         self.validate_packet_contents(packet.get_contents())
@@ -123,7 +123,7 @@ class OutputPort(Port, OutputInterface):
             # FIXME: would be good to check if all outports are closed and
             # terminate the component. otherwise, every component must be
             # written to check is_closed() and break
-            self.sender.drop(packet)
+            self.component.drop(packet)
             self.close()
             # raise FlowError("{}: Could not deliver packet to {}".format(
             #     self._connection.get_name(), self.get_name()))

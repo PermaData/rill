@@ -11,13 +11,22 @@ from rill.engine.exceptions import FlowError, ComponentException
 
 
 class ComponentRunner(Greenlet):
+    """
+    A ``ComponentRunner`` is a specialized ``gevent.Greenlet`` sub-class
+    that manages  a ``Component`` instance during the execution of a
+    ``Network``.
+
+    While the ``Component`` class provides the public API for defining the
+    behavior of a component subclass, the ``ComponentRunner`` provides the
+    private API used by the Network and port classes.
+    """
     logger = LogFormatter(logging.getLogger("component.runner"), {})
 
     def __init__(self, component):
         """
         Parameters
         ----------
-        component : ``Component``
+        component : ``rill.engine.component.Component``
         """
         Greenlet.__init__(self)
 
@@ -34,16 +43,14 @@ class ComponentRunner(Greenlet):
         self.network = component.network
         self._must_run = component._must_run
         self._self_starting = component._self_starting
-        self.ports = component.ports
 
-        self.auto_starting = False
-
-        self.timeout = None
+        self.auto_starting = False  # initial value is set externally
 
         # used when evaluating component statuses for deadlocks
-        self._curr_conn = None  # InputInterface
-        self._curr_outport = None  # OutputPort
+        self.curr_conn = None  # set externally
+        self.curr_outport = None  # set externally
 
+        # FIXME: allow this value to be set.  should we read it from the Network, or do we need per-component control?
         self.ignore_packet_count_error = False
         self._status = StatusValues.NOT_STARTED
 
@@ -72,25 +79,9 @@ class ComponentRunner(Greenlet):
         self.logger.debug(msg, section='locks', **kwargs)
         # self.parent.trace_locks(self, msg)
 
-    # Packets --
-
-    def create(self, data):
-        return self.component.create(data)
-
-    def drop(self, packet):
-        return self.component.drop(packet)
-
     # Ports --
 
-    @property
-    def inports(self):
-        return self.component.inports
-
-    @property
-    def outports(self):
-        return self.component.outports
-
-    def _open_ports(self):
+    def open_ports(self):
         """
         Open all ports.
 
@@ -100,17 +91,17 @@ class ComponentRunner(Greenlet):
         """
         errors = []
         try:
-            for port in self.ports:
+            for port in self.component.ports:
                 port.open()
         except FlowError as e:
             errors.append(str(e))
         return errors
 
-    def _close_ports(self):
+    def close_ports(self):
         """
         Close all ports.
         """
-        for port in self.ports:
+        for port in self.component.ports:
             port.close()
 
     # Statuses --
@@ -187,7 +178,7 @@ class ComponentRunner(Greenlet):
     # def long_wait_end(self):
     #     self.timeout.dispose(self)
 
-    def _activate(self):
+    def activate(self):
         """
         Called from other parts of the system to activate this Component.
 
@@ -223,7 +214,7 @@ class ComponentRunner(Greenlet):
             self.trace_locks("input states - acquired")
             with self._lock:
                 while True:
-                    conns = [c._connection for c in self.inports
+                    conns = [c._connection for c in self.component.inports
                              if c.is_connected()]
                     all_drained = all(c.is_drained() for c in conns)
                     has_data = any(not c.is_empty() for c in conns)
@@ -255,11 +246,11 @@ class ComponentRunner(Greenlet):
 
             self.status = StatusValues.ACTIVE
             self.trace_funcs("Started")
-            if self.ports.IN_NULL.is_connected():
-                self._null_input = self.ports.IN_NULL
+            if self.component.ports.IN_NULL.is_connected():
+                self._null_input = self.component.ports.IN_NULL
                 self._null_input.receive_once()
-            if self.ports.OUT_NULL.is_connected():
-                self._null_output = self.ports.OUT_NULL
+            if self.component.ports.OUT_NULL.is_connected():
+                self._null_output = self.component.ports.OUT_NULL
 
             if self._self_starting:
                 self.auto_starting = True
@@ -277,7 +268,7 @@ class ComponentRunner(Greenlet):
                 if self.is_terminated() or self.has_error():
                     break
 
-                for value in self.inports:
+                for value in self.component.inports:
                     if value.is_static():
                         value.open()
 
@@ -299,7 +290,7 @@ class ComponentRunner(Greenlet):
                 # - _await_actionable_input_state only checks Connections.
                 # - tests succeed if we simply hard-wire InitializationConnection to always open
                 # - it ensures that it yields a new result when component is re-activated
-                for ip in self.inports:
+                for ip in self.component.inports:
                     if ip.is_static():
                         ip.close()
                         # if (not icp.is_closed()):
@@ -322,7 +313,7 @@ class ComponentRunner(Greenlet):
                 # self._null_output.send(p)
                 self._null_output.close()
 
-            self._close_ports()
+            self.close_ports()
 
             if self.component.stack_size() != 0:
                 self.error("Compodenent terminated with stack not empty")
@@ -339,7 +330,7 @@ class ComponentRunner(Greenlet):
                     if self.parent is not None:
                         # record the error and terminate siblings
                         self.parent.signal_error(e)
-                    self._close_ports()
+                    self.close_ports()
             raise GreenletExit()
 
         except Exception as e:
@@ -358,7 +349,7 @@ class ComponentRunner(Greenlet):
             if self.component.parent is not None:
                 # record the error and terminate siblings
                 self.component.parent.signal_error(e)
-            self._close_ports()
+            self.close_ports()
 
     def started(self):
         return bool(self)

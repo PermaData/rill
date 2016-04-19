@@ -67,7 +67,7 @@ class BasePort(with_metaclass(ABCMeta, object)):
         """
         Parameters
         ----------
-        component : ``rill.engine.runner.ComponentRunner``
+        component : ``rill.engine.component.Component``
         name : str
         index : int or None
         optional : bool
@@ -394,6 +394,12 @@ class BasePortCollection(PortContainerMixin):
     _valid_classes = (BasePort,)
 
     def __init__(self, component, ports):
+        """
+        Parameters
+        ----------
+        component : ``rill.engine.component.Component``
+        ports : iterable of ``
+        """
         self.component = component
         self._ports = OrderedDict((p.name, p) for p in self._prep_args(ports))
         self._check_port_types()

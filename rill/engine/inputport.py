@@ -104,7 +104,7 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
         """
         for p in self.iter_packets():
             content = p.get_contents()
-            self.receiver.drop(p)
+            self.component.drop(p)
             yield content
 
             # FIXME: there's some lock stuff in here.  I don't think it applies because the component attr is now static.
@@ -305,8 +305,8 @@ class InitializationConnection(ConnectionInterface):
         See `InputInterface.receive`.
         """
         if not self.is_closed():
-            p = self.receiver.create(self._content)
-            self.receiver.network.receives += 1
+            p = self.inport.component.create(self._content)
+            self.inport.component.network.receives += 1
             self.receiver.logger.debug("Received Initial: " + str(p),
                                        port=self.inport)
             self.close()
@@ -404,7 +404,7 @@ class Connection(ConnectionInterface):
                     if self.is_drained():  # means closed AND empty
                         if self.receiver.status in (StatusValues.DORMANT,
                                                     StatusValues.NOT_STARTED):
-                            self.receiver._activate()
+                            self.receiver.activate()
                         else:
                             # FIXME: Threads
                             # notify_all()
@@ -482,7 +482,7 @@ class Connection(ConnectionInterface):
         self.receiver.network.receives += 1
         while self.is_empty():
             self.receiver.status = StatusValues.SUSP_RECV
-            self.receiver._curr_conn = self
+            self.receiver.curr_conn = self
             self.receiver.logger.debug("Receive suspended", port=self.inport)
 
             # FIXME: threads
@@ -575,7 +575,7 @@ class Connection(ConnectionInterface):
                                          "packets waiting for {}",
                                          port=outport, args=[self.inport])
             else:
-                self.sender._curr_outport = outport
+                self.sender.curr_outport = outport
                 self.sender.status = StatusValues.SUSP_SEND
                 self.sender.logger.debug("Send: Queue full. Suspending "
                                          "delivery to {}",
@@ -607,7 +607,7 @@ class Connection(ConnectionInterface):
                     StatusValues.NOT_STARTED,
                     StatusValues.SUSP_FIPE]:
                     # start or wake up if necessary
-                    self.receiver._activate()
+                    self.receiver.activate()
                 else:
                     # FIXME: Threads
                     # notify_all()  # notify receiver
