@@ -163,3 +163,22 @@ class PassthruNet(SubNet):
         self.add_component("Pass", Passthru)
         self.export("Pass.OUT", "OUT")
         self.export("Pass.IN", "IN")
+
+
+# for fbp-test
+
+@component
+@inport("in", description="Stream of packets to be discarded")
+def Drop(IN):
+    """Discards all incoming packets"""
+    IN.receive().drop()
+
+
+@component
+@inport("in")
+@outport("out")
+def Repeat(IN, OUT):
+    """Pass a stream of packets to an output stream"""
+    # make it a non-looper - for testing
+    p = IN.receive()
+    OUT.send(p)

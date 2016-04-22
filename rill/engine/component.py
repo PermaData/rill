@@ -59,6 +59,7 @@ class Component(with_metaclass(ABCMeta, object)):
 
         # All the input ports are stored here, keyed by name.
         self.ports = None
+        self.metadata = {}
 
         # a stack available to each component
         self._stack = collections.deque()
@@ -161,12 +162,26 @@ class Component(with_metaclass(ABCMeta, object)):
 
     @property
     def inports(self):
+        """
+        Iterate over this component's input ports.
+
+        Yields
+        -------
+        ``rill.engine.inputport.InputPort``
+        """
         for port in flatten_arrays(self.ports):
             if port.kind == 'in' and not is_null_port(port):
                 yield port
 
     @property
     def outports(self):
+        """
+        Iterate over this component's output ports.
+
+        Yields
+        -------
+        ``rill.engine.inputport.OutputPort``
+        """
         for port in flatten_arrays(self.ports):
             if port.kind == 'out' and not is_null_port(port):
                 yield port

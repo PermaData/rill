@@ -1,0 +1,7 @@
+{
+  "name": "rill",
+  "command": "python -m rill.runtime",
+  "host": "localhost",
+  "port": 3569,
+  "collection": "tests.components"
+}

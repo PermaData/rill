@@ -135,6 +135,25 @@ class Network(object):
             self.initialize(value, comp.port(name))
         return comp
 
+    def remove_component(self, name):
+        # FIXME: this needs some love
+        assert not self.active
+        component = self._components.pop(name)
+        for inport in component.inports:
+            if inport.is_connected() and not inport.is_static():
+                for outport in inport._connection.outports:
+                    self.disconnect(inport, outport)
+        for outport in component.outports:
+            if outport.is_connected():
+                self.disconnect(outport._connection.inport, outport)
+
+    def rename_component(self, orig_name, new_name):
+        # FIXME: this needs some love
+        assert not self.active
+        assert new_name not in self._components
+        component = self._components.pop(orig_name)
+        self._components[new_name] = component
+
     def component(self, name):
         """
         Parameters
@@ -145,6 +164,10 @@ class Network(object):
         Returns
         -------
         ``rill.engine.component.Component``
+
+        Raises
+        ------
+        ``rill.engine.exceptions.FlowError`` : if no component found
         """
         comp = self.get_component(name)
         if comp is None:
@@ -193,8 +216,7 @@ class Network(object):
     def connect(self, sender, receiver, connection_capacity=None,
                 count_packets=False):
         """
-        Connect an output port of one component to an input port of another,
-        specifying a connection capacity.
+        Connect an output port of one component to an input port of another.
 
         Parameters
         ----------
@@ -215,6 +237,23 @@ class Network(object):
             inport._connection = Connection()
         inport._connection.connect(inport, outport, connection_capacity)
         return inport
+
+    def disconnect(self, sender, receiver):
+        """
+        Disconnect an output port of one component from an input port of
+        another.
+
+        Parameters
+        ----------
+        sender : ``rill.engine.inputport.InputPort`` or str
+        receiver : ``rill.engine.outputport.OutputPort`` or str
+        """
+        outport = self.get_component_port(sender, kind='out')
+        inport = self.get_component_port(receiver, kind='in')
+        outport._connection = None
+        inport._connection.outports.remove(outport)
+        if not inport._connection.outports:
+            inport._connection = None
 
     def initialize(self, content, receiver):
         """
@@ -247,7 +286,7 @@ class Network(object):
             raise FlowError(
                 "Cannot uninitialize null port: {}".format(inport))
 
-        inport.uninitialize()
+        return inport.uninitialize()
 
     def go(self, resume=False):
         """

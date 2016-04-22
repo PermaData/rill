@@ -185,10 +185,19 @@ class InputPort(Port, InputInterface):
         self._connection = InitializationConnection(static_value, self)
 
     def uninitialize(self):
+        """
+
+        Returns
+        -------
+        ``InitializationConnection``
+            The removed initialization connection
+        """
         if not self.is_static():
             raise FlowError(
                 "Port is not initialized: {}".format(self))
+        conn = self._connection
         self._connection = None
+        return conn
 
     def upstream_count(self):
         """

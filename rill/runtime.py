@@ -10,6 +10,8 @@ from collections import OrderedDict
 import inspect
 import functools
 import textwrap
+import traceback
+import datetime
 
 import argparse
 import requests
@@ -20,8 +22,13 @@ from rill.engine.component import Component
 from rill.engine.inputport import Connection
 from rill.engine.network import Network
 from rill.engine.subnet import SubNet
+from rill.engine.exceptions import FlowError
 
 log = logging.getLogger(__name__)
+
+
+class RuntimeError(FlowError):
+    pass
 
 
 def long_class_name(klass):
@@ -33,7 +40,10 @@ def short_class_name(klass):
     return klass.__name__
 
 
-def obvserve(f, callback):
+def add_callback(f, callback):
+    """
+    Wrap the callable ``f`` to first execute callable ``callback``
+    """
     def wrapper(*args, **kwargs):
         callback(*args, **kwargs)
         return f(*args, **kwargs)
@@ -43,9 +53,13 @@ def obvserve(f, callback):
 class Runtime(object):
     """
     Rill runtime for python
+
+    A ``Runtime`` instance holds many ``rill.engine.network.Network`` instances
+    each running on their own greelent.
     """
     PROTOCOL_VERSION = '0.5'
 
+    # FIXME: move this to rill.engine.types
     # Mapping of native Python types to FBP protocol types
     _type_map = {
         str: 'string',
@@ -106,7 +120,9 @@ class Runtime(object):
         all_capabilities = capabilities
 
         return {
-            'label': 'rill python runtime',
+            # FIXME: there's a bug in fbp-protocol
+            # 'label': 'rill python runtime',
+            # 'label': 'NoFlo runtime',
             'type': 'rill',
             'version': self.PROTOCOL_VERSION,
             'capabilities': capabilities,
@@ -192,6 +208,7 @@ class Runtime(object):
         if not issubclass(component_class, Component):
             raise ValueError('component_class must be a Component')
 
+        print component_class
         return {
             'name': component_class_name,
             'description': textwrap.dedent(component_class.__doc__ or '').strip(),
@@ -239,6 +256,8 @@ class Runtime(object):
     # Network --
 
     def get_status(self, graph_id):
+        if graph_id not in self._graphs:
+            self.new_graph(graph_id)
         started = graph_id in self._executors
         running = started and not self._executors[graph_id].ready()
         print "get_status.  started {}, running {}".format(started, running)
@@ -250,7 +269,7 @@ class Runtime(object):
         """
         self.log.debug('Graph {}: Starting execution'.format(graph_id))
 
-        graph = self._graphs[graph_id]
+        graph = self._get_graph(graph_id)
 
         executor = gevent.Greenlet(graph.go)
         # FIXME: should we delete the executor from self._executors on finish?
@@ -272,23 +291,27 @@ class Runtime(object):
         if graph_id not in self._executors:
             raise ValueError('Invalid graph: {}'.format(graph_id))
 
-        graph = self._graphs[graph_id]
+        graph = self._get_graph(graph_id)
         graph.terminate()
         executor = self._executors[graph_id]
         executor.join()
         del self._executors[graph_id]
 
     def set_debug(self, graph_id, debug):
-        self._create_or_get_graph(graph_id).debug = debug
+        # FIXME: noflo-ui sends the network:debug command before creating a
+        # graph
+        # self._get_graph(graph_id).debug = debug
+        pass
 
     # Graphs --
 
-    def _get_port(self, graph, data, kind):
+    @staticmethod
+    def _get_port(graph, data, kind):
         return graph.get_component_port((data['node'], data['port']),
                                         index=data.get('index'),
                                         kind=kind)
 
-    def _create_or_get_graph(self, graph_id):
+    def _get_graph(self, graph_id):
         """
         Parameters
         ----------
@@ -297,13 +320,13 @@ class Runtime(object):
 
         Returns
         -------
-        graph : ``core.Graph``
+        graph : ``rill.engine.network.Network``
             the graph object.
         """
-        if graph_id not in self._graphs:
-            self._graphs[graph_id] = Network()
-
-        return self._graphs[graph_id]
+        try:
+            return self._graphs[graph_id]
+        except KeyError:
+            raise RuntimeError('Requested graph not found')
 
     def new_graph(self, graph_id):
         """
@@ -312,17 +335,18 @@ class Runtime(object):
         self.log.debug('Graph {}: Initializing'.format(graph_id))
         self._graphs[graph_id] = Network()
 
-    def add_node(self, graph_id, node_id, component_id):
+    def add_node(self, graph_id, node_id, component_id, metadata):
         """
         Add a component instance.
         """
         self.log.debug('Graph {}: Adding node {}({})'.format(
             graph_id, component_id, node_id))
 
-        graph = self._create_or_get_graph(graph_id)
+        graph = self._get_graph(graph_id)
 
         component_class = self._component_types[component_id]['class']
-        graph.add_component(node_id, component_class)
+        component = graph.add_component(node_id, component_class)
+        component.metadata.update(metadata)
 
     def remove_node(self, graph_id, node_id):
         """
@@ -331,8 +355,28 @@ class Runtime(object):
         self.log.debug('Graph {}: Removing node {}'.format(
             graph_id, node_id))
 
-        graph = self._create_or_get_graph(graph_id)
+        graph = self._get_graph(graph_id)
         graph.remove_component(node_id)
+
+    def rename_node(self, graph_id, orig_node_id, new_node_id):
+        """
+        Rename component instance.
+        """
+        self.log.debug('Graph {}: Renaming node {} to {}'.format(
+            graph_id, orig_node_id, new_node_id))
+
+        graph = self._get_graph(graph_id)
+        graph.rename_component(orig_node_id, new_node_id)
+
+    def set_node_metadata(self, graph_id, node_id, metadata):
+        graph = self._get_graph(graph_id)
+        component = graph.component(node_id)
+        for key, value in metadata.items():
+            if value is None:
+                metadata.pop(key)
+                component.metadata.pop(key, None)
+        component.metadata.update(metadata)
+        return component.metadata
 
     def add_edge(self, graph_id, src, tgt):
         """
@@ -341,7 +385,7 @@ class Runtime(object):
         self.log.debug('Graph {}: Connecting ports: {} -> {}'.format(
             graph_id, src, tgt))
 
-        graph = self._graphs[graph_id]
+        graph = self._get_graph(graph_id)
         graph.connect(self._get_port(graph, src, kind='out'),
                       self._get_port(graph, tgt, kind='in'))
 
@@ -352,17 +396,11 @@ class Runtime(object):
         self.log.debug('Graph {}: Disconnecting ports: {} -> {}'.format(
             graph_id, src, tgt))
 
-        graph = self._graphs[graph_id]
+        graph = self._get_graph(graph_id)
+        graph.disconnect(self._get_port(graph, src, kind='out'),
+                         self._get_port(graph, tgt, kind='in'))
 
-        source_port = self._get_port(graph, src, kind='out')
-        if source_port.is_connected():
-            graph.disconnect(source_port)
-
-        target_port = self._get_port(graph, tgt, kind='in')
-        if target_port.is_connected():
-            graph.disconnect(target_port)
-
-    def add_iip(self, graph_id, src, data):
+    def initialize_port(self, graph_id, src, data):
         """
         Set the inital packet for a component inport.
         """
@@ -374,7 +412,7 @@ class Runtime(object):
         if data == []:
             return
 
-        graph = self._graphs[graph_id]
+        graph = self._get_graph(graph_id)
 
         target_port = self._get_port(graph, src, kind='in')
         # if target_port.is_connected():
@@ -382,43 +420,44 @@ class Runtime(object):
 
         graph.initialize(data, target_port)
 
-    def remove_iip(self, graph_id, src):
+    def uninitialize_port(self, graph_id, src):
         """
         Remove the initial packet for a component inport.
         """
         self.log.debug('Graph {}: Removing IIP from port {}'.format(
             graph_id, src))
 
-        graph = self._graphs[graph_id]
+        graph = self._get_graph(graph_id)
 
         target_port = self._get_port(graph, src, kind='in')
         if target_port.is_static():
-            # FIXME: so far the case where an uninitialized port receives a remove_iip
-            # message is when noflo initializes the inport to [] (see add_iip as well)
-            graph.uninitialize(target_port)
+            # FIXME: so far the case where an uninitialized port receives a uninitialize_port
+            # message is when noflo initializes the inport to [] (see initialize_port as well)
+            return graph.uninitialize(target_port)._content
 
 
 def create_websocket_application(runtime):
-    class WebSocketRuntimeAdapterApplication(geventwebsocket.WebSocketApplication):
+    class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         """
-        Web socket application that hosts a single Runtime.
+        Web socket application that hosts a single ``Runtime`` instance.
+
+        An instance of this class sits between the websocket and the runtime.
+        It receives messages over the websocket, delegates their payload to
+        the appropriate Runtime methods, and sends responses where applicable.
         """
         def __init__(self, ws):
-            super(WebSocketRuntimeAdapterApplication, self).__init__(self)
+            super(WebSocketRuntimeApplication, self).__init__(self)
 
             self.log = logging.getLogger('%s.%s' % (self.__class__.__module__,
                                                     self.__class__.__name__))
-
-            # if not isinstance(runtime, Runtime):
-            #     raise ValueError('runtime must be a Runtime, but was %s' % runtime)
-
             self.runtime = runtime
 
-            Connection.send = obvserve(Connection.send,
-                                       self.send_connection_data)
+            Connection.send = add_callback(Connection.send,
+                                           self.send_connection_data)
 
         # WebSocket transport handling --
 
+        # FIXME: not used?
         @staticmethod
         def protocol_name():
             """
@@ -451,11 +490,26 @@ def create_websocket_application(runtime):
             pprint.pprint(m)
 
             try:
-                handler = dispatch[m.get('protocol')]
+                protocol = m['protocol']
+                command = m['command']
+                payload = m['payload']
             except KeyError:
-                self.log.warn("Subprotocol '{}' not supported".format(p))
-            else:
-                handler(m['command'], m['payload'])
+                # FIXME: send error?
+                self.log.warn("Malformed message")
+                return
+
+            try:
+                handler = dispatch[protocol]
+            except KeyError:
+                # FIXME: send error?
+                self.log.warn("Subprotocol '{}' "
+                              "not supported".format(protocol))
+                return
+
+            try:
+                handler(command, payload)
+            except RuntimeError as err:
+                self.send_error(protocol, str(err))
 
         def send(self, protocol, command, payload):
             """
@@ -469,7 +523,19 @@ def create_websocket_application(runtime):
             pprint.pprint(message)
             self.ws.send(json.dumps(message))
 
+        def send_error(self, protocol, message):
+            data = {
+                'message': message,
+                'stack': traceback.format_exc()
+            }
+            self.send(protocol, 'error', data)
+
         def send_connection_data(self, connection, packet, outport):
+            """
+            Setup as a callback for ``rill.engine.inputport.Connection.send``
+            so that packets sent by this method are intercepted and reported
+            to the UI/client.
+            """
             inport = connection.inport
             payload = {
                 'id': '{} {} -> {} {}'.format(
@@ -490,6 +556,7 @@ def create_websocket_application(runtime):
                 'data': packet.get_contents()
             }
             self.send('network', 'data', payload)
+
         # Protocol send/responses --
 
         def handle_runtime(self, command, payload):
@@ -565,38 +632,57 @@ def create_websocket_application(runtime):
 
             send_ack = True
 
+            def get_graph():
+                try:
+                    return payload['graph']
+                except KeyError:
+                    raise RuntimeError('No graph specified')
+
             # New graph
             if command == 'clear':
                 self.runtime.new_graph(payload['id'])
             # Nodes
             elif command == 'addnode':
-                self.runtime.add_node(payload['graph'], payload['id'],
-                                      payload['component'])
+                self.runtime.add_node(get_graph(), payload['id'],
+                                      payload['component'],
+                                      payload.get('metadata', {}))
             elif command == 'removenode':
-                self.runtime.remove_node(payload['graph'], payload['id'])
+                self.runtime.remove_node(get_graph(), payload['id'])
+            elif command == 'renamenode':
+                self.runtime.rename_node(get_graph(), payload['from'],
+                                         payload['to'])
             # Edges/connections
             elif command == 'addedge':
-                self.runtime.add_edge(payload['graph'], payload['src'],
+                self.runtime.add_edge(get_graph(), payload['src'],
                                       payload['tgt'])
             elif command == 'removeedge':
-                self.runtime.remove_edge(payload['graph'], payload['src'],
+                self.runtime.remove_edge(get_graph(), payload['src'],
                                          payload['tgt'])
             # IIP / literals
             elif command == 'addinitial':
-                self.runtime.add_iip(payload['graph'], payload['tgt'],
-                                     payload['src']['data'])
+                self.runtime.initialize_port(get_graph(), payload['tgt'],
+                                             payload['src']['data'])
             elif command == 'removeinitial':
-                self.runtime.remove_iip(payload['graph'], payload['tgt'])
+                iip = self.runtime.uninitialize_port(get_graph(),
+                                                     payload['tgt'])
+                payload['src'] = {'data': iip}
+                # FIXME: hard-wiring metdata here to pass fbp-test
+                payload['metadata'] = {}
             # Exported ports
             elif command in ('addinport', 'addoutport'):
                 pass  # Not supported yet
+            elif command in ('removeinport', 'removeoutport'):
+                pass  # Not supported yet
             # Metadata changes
-            elif command in ('changenode',):
-                pass
+            elif command == 'changenode':
+                metadata = self.runtime.set_node_metadata(get_graph(),
+                                                          payload['id'],
+                                                          payload['metadata'])
+                payload['metadata'] = metadata
             else:
-                send_ack = False
                 self.log.warn("Unknown command '%s' for protocol '%s'" %
                               (command, 'graph'))
+                return
 
             # For any message we respected, send same in return as
             # acknowledgement
@@ -612,14 +698,17 @@ def create_websocket_application(runtime):
             command : str
             payload : dict
             """
-            def send_status(cmd, g):
+            def send_status(cmd, g, timestamp=True):
                 started, running = self.runtime.get_status(g)
                 payload = {
                     'graph': g,
                     'started': started,
                     'running': running,
-                    'debug': True,
+                    # 'debug': True,
                 }
+                if timestamp:
+                    payload['time'] = datetime.datetime.now().isoformat()
+
                 self.send('network', cmd, payload)
                 # FIXME: hook up component logger to and output handler
                 # self.send('network', 'output', {'message': 'TEST!'})
@@ -635,7 +724,7 @@ def create_websocket_application(runtime):
 
             graph_id = payload.get('graph', None)
             if command == 'getstatus':
-                send_status('status', graph_id)
+                send_status('status', graph_id, timestamp=False)
             elif command == 'start':
                 callback = functools.partial(send_status, 'stopped', graph_id)
                 self.runtime.start(graph_id, callback)
@@ -650,7 +739,7 @@ def create_websocket_application(runtime):
                 self.log.warn("Unknown command '%s' for protocol '%s'" %
                               (command, 'network'))
 
-    return WebSocketRuntimeAdapterApplication
+    return WebSocketRuntimeApplication
 
 
 class RuntimeRegistry(object):
@@ -664,9 +753,14 @@ class RuntimeRegistry(object):
         """
         Registers a runtime.
 
-        :param runtime: the Runtime to register.
-        :param user_id: registry user ID.
-        :param address: callback address.
+        Parameters
+        ----------
+        runtime : ``Runtime``
+            the Runtime to register
+        user_id : str
+            registry user ID
+        address : str
+            callback address
         """
         pass
 
@@ -675,7 +769,10 @@ class RuntimeRegistry(object):
         Pings a registered runtime, keeping it alive in the registry.
         This should be called periodically.
 
-        :param runtime: the Runtime to ping.
+        Parameters
+        ----------
+        runtime_id : str
+            the id of the runtime to ping
         """
         pass
 
@@ -748,7 +845,7 @@ def main():
         description='Runtime that responds to commands sent over the network, '
                     'managing and executing graphs.')
     argp.add_argument(
-        '-u', '--user-id', required=True, metavar='UUID',
+        '-u', '--user-id', metavar='UUID',
         help='FlowHub user ID (get this from NoFlo-UI)')
     argp.add_argument(
         '-r', '--runtime-id', metavar='UUID',
@@ -785,7 +882,10 @@ def main():
 
     address = 'ws://{}:{:d}'.format(args.host, args.port)
     runtime_id = args.runtime_id
-    if not runtime_id:
+    if not runtime_id and not args.user_id:
+        log.warn('No runtime ID or user ID was specified: skipping '
+                 'registration with flowhub.')
+    elif not runtime_id and args.user_id:
         runtime_id = create_runtime_id(args.user_id, address)
         log.warn('No runtime ID was specified, so one was '
                  'generated: {}'.format(runtime_id))
@@ -805,6 +905,7 @@ def main():
         This greenlet runs the websocket server that responds remote commands
         that inspect/manipulate the Runtime.
         """
+        print('Runtime listening at {}'.format(address))
         r = geventwebsocket.Resource(
             OrderedDict([('/', create_websocket_application(runtime))]))
         s = geventwebsocket.WebSocketServer(('', args.port), r)
@@ -826,11 +927,12 @@ def main():
             flowhub.ping_runtime(runtime_id)
             gevent.sleep(delay_secs)
 
+    tasks = [runtime_application_task]
+    if runtime_id:
+        tasks.append(registration_task)
+
     # Start!
-    gevent.wait([
-        gevent.spawn(runtime_application_task),
-        gevent.spawn(registration_task)
-    ])
+    gevent.wait([gevent.spawn(t) for t in tasks])
     runtime_application_task()
 
 

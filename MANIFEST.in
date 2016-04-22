@@ -2,6 +2,7 @@ include README.md
 include setup.py
 include requirements.txt
 include tox.ini
+include fbp-config.json
 include LICENSE
 graft docs
 graft tests
