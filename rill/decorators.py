@@ -120,7 +120,8 @@ def component(name=None, **kwargs):
         # transfer annotations
         for ann in ANNOTATIONS:
             val = ann.pop(func)
-            ann.set(cls, val)
+            if val is not None:
+                ann.set(cls, val)
         return cls
 
     if callable(name):
