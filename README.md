@@ -10,7 +10,15 @@ which push and pull streams of data packets through named ports.
 
 The internals are heavily inspired by [JavaFBP](https://github.com/jpaulm/javafbp), which
 is maintained by the author of the seminal [book](http://www.jpaulmorrison.com/fbp/book.html)
-on the subject, while the API draws from concise and expressive frameworks like click and flask.
+on the subject, while the public API draws from concise and expressive frameworks like click and flask.
+
+## Installing
+
+```
+git clone https://github.com/chadrik/rill
+cd rill
+pip install .
+```
 
 ## Example
 
@@ -90,6 +98,12 @@ net.go()
 ```
 
 ## Using the UI
+
+rill can be started as a server, known as a runtime, that can communicate with
+clients such as UIs and other runtimes using the [FBP Network Protocol](http://noflojs.org/documentation/protocol/).
+Currently, the primary UI that supports this open protocol is [noflo-ui](https://github.com/noflo/noflo-ui).
+There are still some incompatibilities between rill and noflo-ui that are being
+worked out, but if you want to give it a try, read on.
 
 ### Installing
 
