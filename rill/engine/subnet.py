@@ -12,10 +12,13 @@ from rill.engine.exceptions import FlowError
 from rill.engine.packet import Packet
 
 
+class ExportComponent(Component):
+    is_export = True
+
 @inport("NAME", type=str)
 @inport("INDEX", type=int)
 @outport("OUT")
-class SubIn(Component):
+class SubIn(ExportComponent):
     """
     Acts as a proxy between an input port on the SubNet and an input port on
     one of its internal components.
@@ -62,7 +65,7 @@ class SubIn(Component):
 @inport("NAME", type=str)
 @inport("INDEX", type=int)
 @outport("OUT")
-class SubInSS(Component):
+class SubInSS(ExportComponent):
     def execute(self):
         pname = self.ports.NAME.receive_once()
 
@@ -111,7 +114,7 @@ class SubInSS(Component):
 @inport("IN")
 @inport("NAME", type=str)
 @inport("INDEX", type=int)
-class SubOut(Component):
+class SubOut(ExportComponent):
     """
     Acts as a proxy between an output port on the SubNet and an output port on
     one of its internal components.
@@ -138,7 +141,7 @@ class SubOut(Component):
 @inport("IN")
 @inport("NAME", type=str)
 @inport("INDEX", type=int)
-class SubOutSS(Component):
+class SubOutSS(ExportComponent):
     """
     Look after output from subnet
 

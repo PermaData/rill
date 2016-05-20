@@ -22,6 +22,10 @@ from rill.engine.inputport import Connection, InputPort, InputArray
 from rill.engine.utils import CountDownLatch
 
 
+class SerializationError(Exception):
+    pass
+
+
 class Network(object):
     """
     A network of comonents.
@@ -626,24 +630,28 @@ class Network(object):
         """ Serialize network to dictionary """
         definition = {
             'processes': {},
-            'connections': []
+            'connections': [],
+            'inports': {},
+            'outports': {}
         }
-        for (name, component) in self._components.items():
-            definition['processes'][name] = {"component": component.__class__.get_type()}
-            for inport in component.inports:
-                if inport.is_connected():
-                    for outport in inport._connection.outports:
-                        sender = outport.component
-                        definition['connections'].append({
-                            'src': {
-                                'process': sender.get_name(),
-                                'port' : outport.name
-                            },
-                            'tgt': {
-                                'process': name,
-                                'port': inport.name
-                            }
-                        })
+        for (name, component) in self.get_components().items():
+            if not component.is_export:
+                definition['processes'][name] = {"component": component.__class__.get_type()}
+                for inport in component.inports:
+                    if inport.is_connected():
+                        for outport in inport._connection.outports:
+                            sender = outport.component
+                            if not outport.component.is_export:
+                                definition['connections'].append({
+                                    'src': {
+                                        'process': sender.get_name(),
+                                        'port' : outport.name
+                                    },
+                                    'tgt': {
+                                        'process': name,
+                                        'port': inport.name
+                                    }
+                                })
 
         return definition
 

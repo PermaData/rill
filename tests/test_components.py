@@ -673,25 +673,40 @@ def test_network_serialization():
     net = Network()
 
     net.add_component('Counter1', Counter)
+    net.add_component('Pass', PassthruNet)
     net.add_component('Discard1', Discard)
-    net.connect('Counter1.OUT', 'Discard1.IN')
+    net.connect('Counter1.OUT', 'Pass.IN')
+    net.connect('Pass.OUT', 'Discard1.IN')
 
-    assert len(net._components.keys()) == 2
+    assert len(net._components.keys()) == 3
 
     definition = net.to_dict()
     assert definition == {
-        "processes": {
-            "Counter1": {
-                "component": "rill.components.basic/Counter"
+        'processes': {
+            'Counter1': {
+                'component': 'rill.components.basic/Counter'
             },
-            "Discard1": {
-                "component": "tests.components/Discard"
+            'Discard1': {
+                'component': 'tests.components/Discard'
+            },
+            'Pass': {
+                'component': 'tests.components/PassthruNet'
             }
         },
-        "connections": [
+        'connections': [
             {
                 'src': {
                     'process': 'Counter1',
+                    'port': 'OUT'
+                },
+                'tgt': {
+                    'process': 'Pass',
+                    'port': 'IN'
+                }
+            },
+            {
+                'src': {
+                    'process': 'Pass',
                     'port': 'OUT'
                 },
                 'tgt': {
@@ -699,6 +714,8 @@ def test_network_serialization():
                     'port': 'IN'
                 }
             }
-        ]
+        ],
+        'inports': {},
+        'outports': {}
     }
 

@@ -34,6 +34,7 @@ logger = LogFormatter(_logger, {})
 class Component(with_metaclass(ABCMeta, object)):
     inport_definitions = []
     outport_definitions = []
+    is_export = False
     _self_starting = False
     _must_run = False
 
