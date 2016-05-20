@@ -621,3 +621,36 @@ class Network(object):
 
         if old_component is not None:
             return old_component
+
+    def to_dict(self):
+        """ Serialize network to dictionary """
+        definition = {
+            'processes': {},
+            'connections': []
+        }
+        for (name, component) in self._components.items():
+            definition['processes'][name] = {"component": component.__class__.get_type()}
+            for inport in component.inports:
+                if inport.is_connected():
+                    for outport in inport._connection.outports:
+                        sender = outport.component
+                        definition['connections'].append({
+                            'src': {
+                                'process': sender.get_name(),
+                                'port' : outport.name
+                            },
+                            'tgt': {
+                                'process': name,
+                                'port': inport.name
+                            }
+                        })
+
+        return definition
+
+    # @classmethod
+    # def from_dict(cls, definition):
+        # """
+        # Create network from dictionary definition
+        # """
+        # return cls(definition)
+

@@ -433,6 +433,13 @@ class Component(with_metaclass(ABCMeta, object)):
         # FIXME: lock here?
         return self.network.globals.get(key)
 
+    @classmethod
+    def get_type(klass):
+        """
+        Get component type for serialization
+        """
+        return '{0}/{1}'.format(klass.__module__,
+                                klass.__name__)
 
 class _FunctionComponent(with_metaclass(ABCMeta, Component)):
     """

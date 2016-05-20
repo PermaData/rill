@@ -27,6 +27,7 @@ from rill.engine.exceptions import FlowError
 log = logging.getLogger(__name__)
 
 
+<<<<<<< HEAD
 class RuntimeError(FlowError):
     pass
 
@@ -35,6 +36,8 @@ def long_class_name(klass):
     return '{0}/{1}'.format(klass.__module__,
                             klass.__name__)
 
+=======
+>>>>>>> 12fa7fb... Add function to serialize network to a dictionary
 
 def short_class_name(klass):
     return klass.__name__
@@ -156,7 +159,7 @@ class Runtime(object):
             raise ValueError('component_class must be a class that inherits '
                              'from Component')
 
-        long_name = long_class_name(component_class)
+        long_name = component_class.get_type()
         short_name = short_class_name(component_class)
 
         if long_name in self._component_types and not overwrite:

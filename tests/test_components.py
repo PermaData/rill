@@ -238,7 +238,6 @@ def test_basic_connections():
     assert dis.ports['IN'].component is dis
     assert isinstance(dis.ports['IN'].receiver, ComponentRunner)
 
-
 def test_fixed_array_connections():
     net = Network()
     gen = net.add_component("Generate", GenerateFixedSizeArray)
@@ -669,3 +668,37 @@ def test_first(net, discard):
 #                  self.component("CopySSt", CopySSt).port("IN"))
 #     self.connect(self.component("CopySSt").port("OUT"),
 #                  self.component("Copy").port("IN"))
+
+def test_network_serialization():
+    net = Network()
+
+    net.add_component('Counter1', Counter)
+    net.add_component('Discard1', Discard)
+    net.connect('Counter1.OUT', 'Discard1.IN')
+
+    assert len(net._components.keys()) == 2
+
+    definition = net.to_dict()
+    assert definition == {
+        "processes": {
+            "Counter1": {
+                "component": "rill.components.basic/Counter"
+            },
+            "Discard1": {
+                "component": "tests.components/Discard"
+            }
+        },
+        "connections": [
+            {
+                'src': {
+                    'process': 'Counter1',
+                    'port': 'OUT'
+                },
+                'tgt': {
+                    'process': 'Discard1',
+                    'port': 'IN'
+                }
+            }
+        ]
+    }
+
