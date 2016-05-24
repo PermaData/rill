@@ -18,12 +18,8 @@ from rill.engine.runner import ComponentRunner
 from rill.engine.component import Component, logger
 from rill.engine.status import StatusValues
 from rill.engine.outputport import OutputPort, OutputArray
-from rill.engine.inputport import Connection, InputPort, InputArray
+from rill.engine.inputport import Connection, InputPort, InputArray, InitializationConnection
 from rill.engine.utils import CountDownLatch
-
-
-class SerializationError(Exception):
-    pass
 
 
 class Network(object):
@@ -45,6 +41,9 @@ class Network(object):
         self.active = False  # used for deadlock detection
 
         self._components = OrderedDict()
+
+        self.inports = []
+        self.outports = []
 
         # FIXME: not used
         self.timeouts = {}
@@ -626,8 +625,26 @@ class Network(object):
         if old_component is not None:
             return old_component
 
+    def export(self, internal_port, external_port, create=False):
+        inport = InputPort(self, name)
+        inport.connect(self.get_component('component'))
+
+        component_inport = self.get_component_port(sender, kind='out')
+        inport = self.get_component_port(receiver, kind='in')
+
+        if connection_capacity is None:
+            connection_capacity = self.default_capacity
+
+        if inport._connection is None:
+            inport._connection = Connection()
+
     def to_dict(self):
-        """ Serialize network to dictionary """
+        """
+        Serialize network to dictionary
+        ----------------
+        Returns:
+        definition: dict - json representation of network according to fbp json standard
+        """
         definition = {
             'processes': {},
             'connections': [],
@@ -639,26 +656,72 @@ class Network(object):
                 definition['processes'][name] = {"component": component.__class__.get_type()}
                 for inport in component.inports:
                     if inport.is_connected():
-                        for outport in inport._connection.outports:
-                            sender = outport.component
-                            if not outport.component.is_export:
-                                definition['connections'].append({
-                                    'src': {
-                                        'process': sender.get_name(),
-                                        'port' : outport.name
-                                    },
-                                    'tgt': {
-                                        'process': name,
-                                        'port': inport.name
+                        if isinstance(inport._connection, InitializationConnection):
+                            definition['connections'].append({
+                                'data': inport._connection._content,
+                                'tgt': {
+                                    'process': name,
+                                    'port': inport.name
+                                }
+                            })
+                        else:
+                            for outport in inport._connection.outports:
+                                sender = outport.component
+                                if not outport.component.is_export:
+                                    connection = {
+                                        'src': {
+                                            'process': sender.get_name(),
+                                            'port' : outport._name if outport.is_element() else outport.name,
+                                        },
+                                        'tgt': {
+                                            'process': name,
+                                            'port': inport.name
+                                        }
                                     }
-                                })
+                                    if outport.is_element():
+                                        connection['src']['index'] = outport.index
+
+                                    definition['connections'].append(connection)
 
         return definition
 
-    # @classmethod
-    # def from_dict(cls, definition):
-        # """
-        # Create network from dictionary definition
-        # """
-        # return cls(definition)
+    @classmethod
+    def from_dict(cls, definition, components):
+        """
+        Create network from dictionary definition
+        Parameters
+        ----------
+        definition : dict - defines network structure according to fbp json standard
+        components: dict - maps component name to ``rill.enginge.component.Component`
+
+        Returns
+        -------
+        net : ``rill.enginge.network.Network`
+        """
+        net = cls()
+        for (name, spec) in definition['processes'].items():
+            net.add_component(name, components[spec['component']])
+
+        for connection in definition['connections']:
+            if connection.get('src'):
+                if connection['src'].get('index'):
+                    src = '{}.{}[{}]'.format(
+                        connection['src']['process'],
+                        connection['src']['port'],
+                        connection['src']['index']
+                    )
+
+                else:
+                    src = '{}.{}'.format(connection['src']['process'], connection['src']['port'])
+
+                tgt = '{}.{}'.format(connection['tgt']['process'], connection['tgt']['port'])
+
+                net.connect(src, tgt)
+            else:
+                data = connection['data']
+                tgt = '{}.{}'.format(connection['tgt']['process'], connection['tgt']['port'])
+
+                net.initialize(data, tgt)
+
+        return net
 
