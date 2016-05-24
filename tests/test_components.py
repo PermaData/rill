@@ -9,7 +9,7 @@ from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import InputPort, InputArray
 from rill.engine.runner import ComponentRunner
 from rill.engine.component import Component
-from rill.decorators import inport, outport, component
+from rill.decorators import inport, outport, component, subnet
 
 from tests.components import *
 
@@ -864,8 +864,40 @@ def test_network_deserialization():
     assert definition == expected
 
 def test_network_export():
-    net = Network
+    net = Network()
     passthru = net.add_component("Pass", SlowPass, DELAY=0.1)
 
-    net.export("Pass.OUT", "OUT")
-    net.export("Pass.IN", "IN")
+    net.export('Pass.OUT', 'OUT')
+    net.export('Pass.IN', 'IN')
+
+    assert len(net.inports.keys()) == 1
+    assert len(net.outports.keys()) == 1
+
+def test_subnet_decorator():
+
+    @outport("OUT")
+    @inport("IN")
+    @subnet
+    def DecoratedPassNet(sub):
+        sub.add_component('Head', SlowPass, DELAY=0.01)
+        sub.add_component('Tail', SlowPass, DELAY=0.01)
+
+        sub.connect('Head.OUT', 'Tail.IN')
+
+        sub.export('Head.IN', 'IN')
+        sub.export('Tail.OUT', 'OUT')
+
+    net = Network()
+
+    gen = net.add_component("Generate", GenSS, COUNT=5)
+    passnet = net.add_component("Subnet", DecoratedPassNet)
+    dis = net.add_component("Discard", Discard)
+
+    net.connect("Generate.OUT", "Subnet.IN")
+    net.connect("Subnet.OUT", "Discard.IN")
+
+    net.go()
+
+    assert dis.values == [
+        '', '000005', '000004', '000003', '000002', '000001', '',
+    ]

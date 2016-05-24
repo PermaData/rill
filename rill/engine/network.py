@@ -31,19 +31,20 @@ class Network(object):
     _components : dict of (str, ``rill.engine.runner.ComponentRunner``
     """
 
-    def __init__(self, default_capacity=10, deadlock_test_interval=1):
+    def __init__(self, default_capacity=10, deadlock_test_interval=1, parent=None):
         # FIXME: what should the name be?
         # super(Network, self).__init__(self.__class__.__name__, None)
         # self.logger = logger
         self.default_capacity = default_capacity
         self.deadlock_test_interval = deadlock_test_interval
+        self.parent = parent
 
         self.active = False  # used for deadlock detection
 
         self._components = OrderedDict()
 
-        self.inports = []
-        self.outports = []
+        self.inports = {}
+        self.outports = {}
 
         # FIXME: not used
         self.timeouts = {}
@@ -625,18 +626,14 @@ class Network(object):
         if old_component is not None:
             return old_component
 
-    def export(self, internal_port, external_port, create=False):
-        inport = InputPort(self, name)
-        inport.connect(self.get_component('component'))
+    def export(self, internal_port_name, external_port_name):
+        internal_port = self.get_component_port(internal_port_name)
 
-        component_inport = self.get_component_port(sender, kind='out')
-        inport = self.get_component_port(receiver, kind='in')
+        if isinstance(internal_port, InputPort):
+            self.inports[external_port_name] = internal_port
 
-        if connection_capacity is None:
-            connection_capacity = self.default_capacity
-
-        if inport._connection is None:
-            inport._connection = Connection()
+        elif isinstance(internal_port, OutputPort):
+            self.outports[external_port_name] = internal_port
 
     def to_dict(self):
         """

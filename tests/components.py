@@ -159,10 +159,10 @@ def GenSS(COUNT, OUT):
 @outport("OUT")
 @inport("IN")
 class PassthruNet(SubNet):
-    def define(self):
-        self.add_component("Pass", Passthru)
-        self.export("Pass.OUT", "OUT")
-        self.export("Pass.IN", "IN")
+    def define(self, network):
+        network.add_component("Pass", Passthru)
+        network.export("Pass.OUT", "OUT")
+        network.export("Pass.IN", "IN")
 
 
 # for fbp-test

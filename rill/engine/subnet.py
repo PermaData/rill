@@ -31,7 +31,7 @@ class SubIn(ExportComponent):
         if self.ports.OUT.is_closed():
             return
 
-        inport = self.parent.ports[pname]
+        inport = self.parent.parent.ports[pname]
         index = self.ports.INDEX.receive_once()
         if index is not None:
             inport = inport[index]
@@ -72,7 +72,7 @@ class SubInSS(ExportComponent):
         if self.ports.OUT.is_closed():
             return
 
-        inport = self.parent.ports[pname]
+        inport = self.parent.parent.ports[pname]
         index = self.ports.INDEX.receive_once()
         if index is not None:
             inport = inport[index]
@@ -124,7 +124,7 @@ class SubOut(ExportComponent):
         if pname is None:
             return
 
-        outport = self.parent.ports[pname]
+        outport = self.parent.parent.ports[pname]
         index = self.ports.INDEX.receive_once()
         if index is not None:
             outport = outport[index]
@@ -154,7 +154,7 @@ class SubOutSS(ExportComponent):
         if pname is None:
             return
 
-        outport = self.parent.ports[pname]
+        outport = self.parent.parent.ports[pname]
         index = self.ports.INDEX.receive_once()
         if index is not None:
             outport = outport[index]
@@ -174,21 +174,33 @@ class SubOutSS(ExportComponent):
         self.logger.debug("Releasing output port: {}".format(outport))
 
 
-class SubNet(with_metaclass(ABCMeta, Network, Component)):
-    def __init__(self, name, parent, **kwargs):
+class SubNet(with_metaclass(ABCMeta, Component)):
+    def __init__(self, name, parent, sub_network=None, **kwargs):
         Component.__init__(self, name, parent)
         # don't do deadlock testing in subnets - you need to consider
         # the whole net!
         kwargs['deadlock_test_interval'] = None
-        Network.__init__(self, **kwargs)
+        kwargs['parent'] = self
+
+        if not sub_network:
+            sub_network = Network(**kwargs)
+
+        self.sub_network = sub_network
 
     @abstractmethod
-    def define(self):
+    def define(self, net):
         raise NotImplementedError
 
     def _init(self):
         super(SubNet, self)._init()
-        self.define()
+        self.define(self.sub_network)
+
+        for (name, internal_port) in self.sub_network.inports.items():
+            self.export(internal_port, name, True)
+
+        for (name, internal_port) in self.sub_network.outports.items():
+            self.export(internal_port, name, True)
+
 
     def export(self, internal_port, external_port, create=False):
         """
@@ -214,7 +226,6 @@ class SubNet(with_metaclass(ABCMeta, Network, Component)):
 
         # FIXME: support exporting an array port to array port. currently,
         # if you try to do that you'll end up exporting the first element
-        internal_port = self.get_component_port(internal_port)
         if create:
             # create a new port on the SubNet based on the exported port
             def_cls = inport if internal_port.kind == 'in' else outport
@@ -229,17 +240,17 @@ class SubNet(with_metaclass(ABCMeta, Network, Component)):
             external_port = external_port.get_element(create=True)
 
         if isinstance(external_port, InputPort):
-            subcomp = self.add_component('_' + external_port.name, SubIn,
+            subcomp = self.sub_network.add_component('_' + external_port.name, SubIn,
                                          NAME=external_port._name)
             if external_port.index is not None:
                 self.initialize(external_port.index, subcomp.ports.INDEX)
-            self.connect(subcomp.ports.OUT, internal_port)
+            self.sub_network.connect(subcomp.ports.OUT, internal_port)
         elif isinstance(external_port, OutputPort):
-            subcomp = self.add_component('_' + external_port.name, SubOut,
+            subcomp = self.sub_network.add_component('_' + external_port.name, SubOut,
                                          NAME=external_port._name)
             if external_port.index is not None:
                 self.initialize(external_port.index, subcomp.ports.INDEX)
-            self.connect(internal_port, subcomp.ports.IN)
+            self.sub_network.connect(internal_port, subcomp.ports.IN)
 
 
     def execute(self):
@@ -269,9 +280,9 @@ class SubNet(with_metaclass(ABCMeta, Network, Component)):
         #         "One or more mandatory connections have been left unconnected: " + self.get_name())
 
         # FIXME: handle resume!
-        self.initiate()
+        self.sub_network.initiate()
         # activate_all()
-        self.wait_for_all()
+        self.sub_network.wait_for_all()
         for ip in self.inports:
             if ip.is_static():
                 ip.close()
@@ -286,7 +297,7 @@ class SubNet(with_metaclass(ABCMeta, Network, Component)):
             sub_end_port.send(Packet(None, self))
 
     def get_children(self):
-        return list(self.get_components().values())
+        return list(self.sub_network.get_components().values())
 
     def signal_error(self, e):
         if self.status != StatusValues.ERROR:
@@ -347,3 +358,4 @@ class SubOI(Component):
         self.nameport = self.open_input("NAME")
         self.inport = self.open_input("IN")
         self.outport = self.open_output("OUT")
+

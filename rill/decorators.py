@@ -3,7 +3,7 @@ from past.builtins import basestring
 from rill.utils import Annotation, FlagAnnotation, NOT_SET
 
 
-__all__ = ['inport', 'outport', 'must_run', 'self_starting', 'component']
+__all__ = ['inport', 'outport', 'must_run', 'self_starting', 'component', 'subnet']
 
 
 class _Port(Annotation):
@@ -133,3 +133,28 @@ def component(name=None, **kwargs):
         # @component()
         assert name is None or isinstance(name, basestring)
         return decorator
+
+
+def subnet(name):
+    from rill.engine.subnet import SubNet
+
+    def decorator(func):
+
+        class _SubNet(SubNet):
+            name_ = name or func.__name__
+            def define(self, net):
+                func(net)
+
+        return _SubNet
+
+    if callable(name):
+        # @component
+        f = name
+        name = None
+        return decorator(f)
+
+    else:
+        # @component()
+        assert name is None or isinstance(name, basestring)
+        return decorator
+
