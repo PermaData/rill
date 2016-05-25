@@ -743,6 +743,10 @@ serialized_network_fixture = {
     'inports': {},
     'outports': {}
 }
+serialized_network_fixture['connections'] = sorted(
+    serialized_network_fixture['connections'],
+    key=str
+)
 
 def test_network_serialization():
     net = Network()
@@ -763,16 +767,15 @@ def test_network_serialization():
 
     definition = net.to_dict()
 
-    expected = serialized_network_fixture.copy()
+    expected = serialized_network_fixture
 
     # Order of connections array shouldn't matter
-    definition['connections'] = sorted(definition['connections'])
-    expected['connections'] = sorted(expected['connections'])
+    definition['connections'] = sorted(definition['connections'], key=str)
 
     assert definition == expected
 
 def test_network_deserialization():
-    definition = serialized_network_fixture.copy()
+    definition = serialized_network_fixture
 
     net = Network.from_dict(definition, {
         'rill.components.basic/Counter': Counter,
@@ -813,8 +816,7 @@ def test_network_deserialization():
     expected = net.to_dict()
 
     # Order of connections array shouldn't matter
-    definition['connections'] = sorted(definition['connections'])
-    expected['connections'] = sorted(expected['connections'])
+    expected['connections'] = sorted(expected['connections'], key=str)
 
     assert definition == expected
 
@@ -922,8 +924,8 @@ def test_export_serialization():
     }
 
     # Order of connections array shouldn't matter
-    definition['connections'] = sorted(definition['connections'])
-    expected['connections'] = sorted(expected['connections'])
+    definition['connections'] = sorted(definition['connections'], key=str)
+    expected['connections'] = sorted(expected['connections'], key=str)
 
     assert definition == expected
 
@@ -989,7 +991,7 @@ def test_export_of_exports():
     expected = net.to_dict()
 
     # Order of connections array shouldn't matter
-    definition['connections'] = sorted(definition['connections'])
-    expected['connections'] = sorted(expected['connections'])
+    definition['connections'] = sorted(definition['connections'], key=str)
+    expected['connections'] = sorted(expected['connections'], key=str)
 
     assert definition == expected
