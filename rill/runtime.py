@@ -27,7 +27,6 @@ from rill.engine.exceptions import FlowError
 log = logging.getLogger(__name__)
 
 
-<<<<<<< HEAD
 class RuntimeError(FlowError):
     pass
 
@@ -36,8 +35,6 @@ def long_class_name(klass):
     return '{0}/{1}'.format(klass.__module__,
                             klass.__name__)
 
-=======
->>>>>>> 12fa7fb... Add function to serialize network to a dictionary
 
 def short_class_name(klass):
     return klass.__name__
