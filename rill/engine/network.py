@@ -792,3 +792,66 @@ class Network(object):
 
         return net
 
+
+def apply_network(network, inputs):
+    """
+    Apply network like a function treating iips as arguments to inports
+    and the values of outports as returned
+
+    Parameters
+    ----------
+    network : ``rill.engine.network.Network`
+
+    inputs : dict
+             map port names to iips
+
+    Returns
+    -------
+    outputs : dict
+              map network outport names to values
+    """
+    from functools import reduce
+    from rill.engine.subnet import SubNet
+    from rill.components.basic import Passthru, Capture
+    from rill.decorators import inport, outport
+
+    class ApplyNet(SubNet):
+        sub_network = network
+        def define(self, network): pass
+
+    reverse_apply = lambda cls, fn: fn(cls)
+
+    ApplyNet = reduce(reverse_apply,
+        map(outport, network.outports.keys()), ApplyNet)
+
+    ApplyNet = reduce(reverse_apply,
+        map(inport, network.inports.keys()), ApplyNet)
+
+    wrapper = Network()
+    wrapper.add_component('ApplyNet', ApplyNet)
+
+    for (port_name, value) in inputs.items():
+        pass_name = 'Pass_{}'.format(port_name)
+        pass_in = '{}.IN'.format(pass_name)
+        pass_out = '{}.OUT'.format(pass_name)
+        sub_in = 'ApplyNet.{}'.format(port_name)
+
+        wrapper.add_component(pass_name, Passthru)
+        wrapper.connect(pass_out, sub_in)
+        wrapper.initialize(value, pass_in)
+
+    captures = {}
+    for outport_name in network.outports.keys():
+        capture_name = 'Capture_{}'.format(outport_name)
+        sub_out = 'ApplyNet.{}'.format(outport_name)
+        capture_port_name = '{}.IN'.format(capture_name)
+
+        capture = wrapper.add_component(capture_name, Capture)
+        wrapper.connect(sub_out, capture_port_name)
+
+        captures[outport_name] = capture
+
+    wrapper.go()
+
+    return {name: capture.value for (name, capture) in captures.items()}
+

@@ -55,8 +55,8 @@ class inport(_Port):
         self.args['default'] = default
 
     @classmethod
-    def from_port(cls, port):
-        return cls(port._name, type=port.type, array=port.is_array(),
+    def from_port(cls, port, name=None):
+        return cls(name or port._name, type=port.type, array=port.is_array(),
                    fixed_size=port.fixed_size if port.is_array() else None,
                    description=port.description,
                    optional=port.optional, static=port.auto_receive,
@@ -71,8 +71,8 @@ class outport(_Port):
     _kind = 'output'
 
     @classmethod
-    def from_port(cls, port):
-        return cls(port._name, type=port.type, array=port.is_array(),
+    def from_port(cls, port, name=None):
+        return cls(name or port._name, type=port.type, array=port.is_array(),
                    fixed_size=port.fixed_size if port.is_array() else None,
                    description=port.description,
                    optional=port.optional)

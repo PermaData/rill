@@ -4,7 +4,7 @@ import gevent.monkey
 import gevent
 
 from rill.engine.exceptions import FlowError
-from rill.engine.network import Network
+from rill.engine.network import Network, apply_network
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import InputPort, InputArray
 from rill.engine.runner import ComponentRunner
@@ -995,3 +995,25 @@ def test_export_of_exports():
     expected['connections'] = sorted(expected['connections'], key=str)
 
     assert definition == expected
+
+
+def test_network_apply():
+    net = Network()
+    net.add_component('Add1', Add)
+    net.add_component('Add2', Add)
+
+    net.connect('Add1.OUT', 'Add2.IN1')
+
+    net.export('Add1.IN1', 'IN1')
+    net.export('Add1.IN2', 'IN2')
+    net.export('Add2.IN2', 'IN3')
+    net.export('Add2.OUT', 'OUT')
+
+    outputs = apply_network(net, {
+        'IN1': 1,
+        'IN2': 3,
+        'IN3': 6
+    })
+
+    assert outputs['OUT'] == 10
+

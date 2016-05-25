@@ -179,16 +179,16 @@ class SubOutSS(ExportComponent):
 
 
 class SubNet(with_metaclass(ABCMeta, Component)):
-    def __init__(self, name, parent, sub_network=None, **kwargs):
+    sub_network = None
+
+    def __init__(self, name, parent, **kwargs):
         Component.__init__(self, name, parent)
         # don't do deadlock testing in subnets - you need to consider
         # the whole net!
         kwargs['deadlock_test_interval'] = None
 
-        if not sub_network:
-            sub_network = Network(**kwargs)
-
-        self.sub_network = sub_network
+        if not self.sub_network:
+            self.sub_network = Network(**kwargs)
 
     @abstractmethod
     def define(self, net):
@@ -234,7 +234,7 @@ class SubNet(with_metaclass(ABCMeta, Component)):
             def_cls = inport if internal_port.kind == 'in' else outport
             external_port_name = external_port
             assert isinstance(external_port_name, basestring)
-            portdef = def_cls.from_port(internal_port)
+            portdef = def_cls.from_port(internal_port, external_port_name)
             external_port = portdef.create_port(self)
             self.ports[external_port_name] = external_port
         else:

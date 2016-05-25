@@ -193,3 +193,15 @@ def Cap(IN, MAX, OUT):
             break
         else:
             OUT.send(p)
+
+@inport("IN", description="Value to be captured")
+class Capture(Component):
+    def execute(self):
+        captured = self.ports.IN.receive_once()
+        if captured is None:
+            return
+
+        self.value = captured
+
+    def init(self):
+        self.value = None
