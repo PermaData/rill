@@ -136,6 +136,20 @@ def component(name=None, **kwargs):
 
 
 def subnet(name):
+    """
+    Decorator for creating subnet
+
+    Callback expects a function with one argument, the Network that will be
+    wrapped by the SubNet component.
+
+    Parameters
+    ----------
+    name : str, optional
+
+    Returns
+    -------
+    subnet : ``rill.engine.subnet.SubNet`
+    """
     from rill.engine.subnet import SubNet
 
     def decorator(func):
