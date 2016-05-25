@@ -863,6 +863,7 @@ def test_network_deserialization():
 
     assert definition == expected
 
+
 def test_network_export():
     net = Network()
     passthru = net.add_component("Pass", SlowPass, DELAY=0.1)
@@ -872,6 +873,7 @@ def test_network_export():
 
     assert len(net.inports.keys()) == 1
     assert len(net.outports.keys()) == 1
+
 
 def test_subnet_decorator():
 
@@ -901,3 +903,138 @@ def test_subnet_decorator():
     assert dis.values == [
         '', '000005', '000004', '000003', '000002', '000001', '',
     ]
+
+
+def test_export_serialization():
+    net = Network()
+
+    net.add_component('Head', SlowPass, DELAY=0.01)
+    net.add_component('Tail', SlowPass, DELAY=0.01)
+
+    net.connect('Head.OUT', 'Tail.IN')
+
+    net.export('Head.IN', 'IN')
+    net.export('Tail.OUT', 'OUT')
+
+    definition = net.to_dict()
+    expected = {
+        'processes': {
+            'Head': {
+                'component': 'rill.components.timing/SlowPass'
+            },
+            'Tail': {
+                'component': 'rill.components.timing/SlowPass'
+            }
+        },
+        'connections': [
+            {
+                'data': 0.01,
+                'tgt': {
+                    'process': 'Head',
+                    'port': 'DELAY'
+                }
+            },
+            {
+                'data': 0.01,
+                'tgt': {
+                    'process': 'Tail',
+                    'port': 'DELAY'
+                }
+            },
+            {
+                'src': {
+                    'process': 'Head',
+                    'port': 'OUT'
+                },
+                'tgt': {
+                    'process': 'Tail',
+                    'port': 'IN'
+                }
+            }
+        ],
+        'inports': {
+            'IN': {
+                'process': 'Head',
+                'port': 'IN'
+            }
+        },
+        'outports': {
+            'OUT': {
+                'process': 'Tail',
+                'port': 'OUT'
+            }
+        }
+    }
+
+    # Order of connections array shouldn't matter
+    definition['connections'] = sorted(definition['connections'])
+    expected['connections'] = sorted(expected['connections'])
+
+    assert definition == expected
+
+def test_export_of_exports():
+    definition = {
+        'processes': {
+            'Head': {
+                'component': 'rill.components.timing/SlowPass'
+            },
+            'Tail': {
+                'component': 'rill.components.timing/SlowPass'
+            }
+        },
+        'connections': [
+            {
+                'data': 0.01,
+                'tgt': {
+                    'process': 'Head',
+                    'port': 'DELAY'
+                }
+            },
+            {
+                'data': 0.01,
+                'tgt': {
+                    'process': 'Tail',
+                    'port': 'DELAY'
+                }
+            },
+            {
+                'src': {
+                    'process': 'Head',
+                    'port': 'OUT'
+                },
+                'tgt': {
+                    'process': 'Tail',
+                    'port': 'IN'
+                }
+            }
+        ],
+        'inports': {
+            'IN': {
+                'process': 'Head',
+                'port': 'IN'
+            }
+        },
+        'outports': {
+            'OUT': {
+                'process': 'Tail',
+                'port': 'OUT'
+            }
+        }
+    }
+
+    net = Network.from_dict(definition, {
+        'rill.components.timing/SlowPass': SlowPass
+    })
+
+    Head = net.get_component('Head')
+    Tail = net.get_component('Tail')
+
+    assert Head.ports.OUT._connection.inport.component == Tail
+
+    expected = net.to_dict()
+
+    # Order of connections array shouldn't matter
+    definition['connections'] = sorted(definition['connections'])
+    expected['connections'] = sorted(expected['connections'])
+
+    assert definition == expected

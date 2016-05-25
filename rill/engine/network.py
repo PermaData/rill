@@ -680,6 +680,18 @@ class Network(object):
 
                                     definition['connections'].append(connection)
 
+        for (name, inport) in self.inports.items():
+            definition['inports'][name] = {
+                'process': inport.component.get_name(),
+                'port': inport.name
+            }
+
+        for (name, outport) in self.outports.items():
+            definition['outports'][name] = {
+                'process': outport.component.get_name(),
+                'port': outport.name
+            }
+
         return definition
 
     @classmethod
@@ -719,6 +731,12 @@ class Network(object):
                 tgt = '{}.{}'.format(connection['tgt']['process'], connection['tgt']['port'])
 
                 net.initialize(data, tgt)
+
+        for (name, inport) in definition['inports'].items():
+            net.export('{}.{}'.format(inport['process'], inport['port']), name)
+
+        for (name, outport) in definition['outports'].items():
+            net.export('{}.{}'.format(outport['process'], outport['port']), name)
 
         return net
 
