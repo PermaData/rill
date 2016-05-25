@@ -31,20 +31,19 @@ class Network(object):
     _components : dict of (str, ``rill.engine.runner.ComponentRunner``
     """
 
-    def __init__(self, default_capacity=10, deadlock_test_interval=1, parent=None):
+    def __init__(self, default_capacity=10, deadlock_test_interval=1):
         # FIXME: what should the name be?
         # super(Network, self).__init__(self.__class__.__name__, None)
         # self.logger = logger
         self.default_capacity = default_capacity
         self.deadlock_test_interval = deadlock_test_interval
-        self.parent = parent
 
         self.active = False  # used for deadlock detection
 
         self._components = OrderedDict()
 
-        self.inports = {}
-        self.outports = {}
+        self.inports = OrderedDict()
+        self.outports = OrderedDict()
 
         # FIXME: not used
         self.timeouts = {}
@@ -627,6 +626,21 @@ class Network(object):
             return old_component
 
     def export(self, internal_port_name, external_port_name):
+        """
+        Exports component port for connecting to other networks
+        as a sub network
+
+        Parameters
+        ----------
+        internal_port_name : str
+                             name of internal port
+        external_port_name : str
+                             name of port that will be exposed
+
+        Returns
+        -------
+        self : ``rill.engine.network.Network`
+        """
         internal_port = self.get_component_port(internal_port_name)
 
         if isinstance(internal_port, InputPort):
@@ -635,12 +649,17 @@ class Network(object):
         elif isinstance(internal_port, OutputPort):
             self.outports[external_port_name] = internal_port
 
+        return self
+
     def to_dict(self):
         """
         Serialize network to dictionary
+
+        Returns
         ----------------
-        Returns:
-        definition: dict - json representation of network according to fbp json standard
+        definition : dict
+                     json representation of network
+                     according to fbp json standard
         """
         definition = {
             'processes': {},
@@ -649,36 +668,47 @@ class Network(object):
             'outports': {}
         }
         for (name, component) in self.get_components().items():
-            if not component.is_export:
-                definition['processes'][name] = {"component": component.__class__.get_type()}
-                for inport in component.inports:
-                    if inport.is_connected():
-                        if isinstance(inport._connection, InitializationConnection):
-                            definition['connections'].append({
-                                'data': inport._connection._content,
-                                'tgt': {
-                                    'process': name,
-                                    'port': inport.name
-                                }
-                            })
-                        else:
-                            for outport in inport._connection.outports:
-                                sender = outport.component
-                                if not outport.component.is_export:
-                                    connection = {
-                                        'src': {
-                                            'process': sender.get_name(),
-                                            'port' : outport._name if outport.is_element() else outport.name,
-                                        },
-                                        'tgt': {
-                                            'process': name,
-                                            'port': inport.name
-                                        }
-                                    }
-                                    if outport.is_element():
-                                        connection['src']['index'] = outport.index
+            if component.is_export: continue
 
-                                    definition['connections'].append(connection)
+            definition['processes'][name] = {
+                "component": component.get_type()
+            }
+
+            for inport in component.inports:
+                if not inport.is_connected(): continue
+
+                if isinstance(inport._connection, InitializationConnection):
+                    definition['connections'].append({
+                        'data': inport._connection._content,
+                        'tgt': {
+                            'process': name,
+                            'port': inport.name
+                        }
+                    })
+                else:
+                    for outport in inport._connection.outports:
+                        sender = outport.component
+                        if outport.component.is_export: continue
+
+                        connection = {
+                            'src': {
+                                'process': sender.get_name(),
+                                'port' : outport._name if outport.is_element()
+                                         else outport.name
+                            },
+                            'tgt': {
+                                'process': name,
+                                'port' : inport._name if inport.is_element()
+                                         else inport.name
+                            }
+                        }
+                        if outport.is_element():
+                            connection['src']['index'] = outport.index
+
+                        if inport.is_element():
+                            connection['tgt']['index'] = inport.index
+
+                        definition['connections'].append(connection)
 
         for (name, inport) in self.inports.items():
             definition['inports'][name] = {
@@ -698,10 +728,13 @@ class Network(object):
     def from_dict(cls, definition, components):
         """
         Create network from dictionary definition
+
         Parameters
         ----------
-        definition : dict - defines network structure according to fbp json standard
-        components: dict - maps component name to ``rill.enginge.component.Component`
+        definition : dict
+                     defines network structure according to fbp json standard
+        components : dict
+                     maps component name to ``rill.enginge.component.Component`
 
         Returns
         -------
@@ -721,14 +754,31 @@ class Network(object):
                     )
 
                 else:
-                    src = '{}.{}'.format(connection['src']['process'], connection['src']['port'])
+                    src = '{}.{}'.format(
+                        connection['src']['process'],
+                        connection['src']['port']
+                    )
 
-                tgt = '{}.{}'.format(connection['tgt']['process'], connection['tgt']['port'])
+                if connection['tgt'].get('index'):
+                    tgt = '{}.{}[{}]'.format(
+                        connection['tgt']['process'],
+                        connection['tgt']['port'],
+                        connection['tgt']['index']
+                    )
+
+                else:
+                    tgt = '{}.{}'.format(
+                        connection['tgt']['process'],
+                        connection['tgt']['port']
+                    )
 
                 net.connect(src, tgt)
             else:
                 data = connection['data']
-                tgt = '{}.{}'.format(connection['tgt']['process'], connection['tgt']['port'])
+                tgt = '{}.{}'.format(
+                    connection['tgt']['process'],
+                    connection['tgt']['port']
+                )
 
                 net.initialize(data, tgt)
 
@@ -736,7 +786,9 @@ class Network(object):
             net.export('{}.{}'.format(inport['process'], inport['port']), name)
 
         for (name, outport) in definition['outports'].items():
-            net.export('{}.{}'.format(outport['process'], outport['port']), name)
+            net.export('{}.{}'.format(
+                outport['process'], outport['port']
+            ), name)
 
         return net
 

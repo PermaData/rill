@@ -669,93 +669,101 @@ def test_first(net, discard):
 #     self.connect(self.component("CopySSt").port("OUT"),
 #                  self.component("Copy").port("IN"))
 
+serialized_network_fixture = {
+    'processes': {
+        'Counter1': {
+            'component': 'rill.components.basic/Counter'
+        },
+        'Discard1': {
+            'component': 'tests.components/Discard'
+        },
+        'Pass': {
+            'component': 'tests.components/PassthruNet'
+        },
+        'Generate': {
+            'component': 'tests.components/GenerateArray'
+        },
+        'Merge': {
+            'component': 'rill.components.merge/Group'
+        }
+    },
+    'connections': [
+        {
+            'data': 5,
+            'tgt': {
+                'process': 'Counter1',
+                'port': 'IN'
+            }
+        },
+        {
+            'src': {
+                'process': 'Counter1',
+                'port': 'OUT'
+            },
+            'tgt': {
+                'process': 'Pass',
+                'port': 'IN'
+            }
+        },
+        {
+            'src': {
+                'process': 'Pass',
+                'port': 'OUT'
+            },
+            'tgt': {
+                'process': 'Discard1',
+                'port': 'IN'
+            }
+        },
+        {
+            'src': {
+                'process': 'Generate',
+                'port': 'OUT',
+                'index': 0
+            },
+            'tgt': {
+                'process': 'Merge',
+                'port': 'IN',
+                'index': 1
+            }
+        },
+        {
+            'src': {
+                'process': 'Generate',
+                'port': 'OUT',
+                'index': 1
+            },
+            'tgt': {
+                'process': 'Merge',
+                'port': 'IN',
+                'index': 2
+            }
+        }
+    ],
+    'inports': {},
+    'outports': {}
+}
+
 def test_network_serialization():
     net = Network()
 
     net.add_component('Counter1', Counter)
     net.add_component('Pass', PassthruNet)
     net.add_component('Discard1', Discard)
-    net.add_component("Generate", GenerateArray)
+    net.add_component('Generate', GenerateArray)
+    net.add_component("Merge", Group)
     net.connect('Counter1.OUT', 'Pass.IN')
     net.connect('Pass.OUT', 'Discard1.IN')
-    net.connect("Generate.OUT[1]", "Discard1.IN")
-    net.connect("Generate.OUT[2]", "Discard1.IN")
+    net.connect("Generate.OUT[0]", "Merge.IN[1]")
+    net.connect("Generate.OUT[1]", "Merge.IN[2]")
 
     net.initialize(5, "Counter1.IN")
 
-    assert len(net._components.keys()) == 4
+    assert len(net.get_components().keys()) == 5
 
     definition = net.to_dict()
 
-    expected = {
-        'processes': {
-            'Counter1': {
-                'component': 'rill.components.basic/Counter'
-            },
-            'Discard1': {
-                'component': 'tests.components/Discard'
-            },
-            'Pass': {
-                'component': 'tests.components/PassthruNet'
-            },
-            'Generate': {
-                'component': 'tests.components/GenerateArray'
-            }
-        },
-        'connections': [
-            {
-                'data': 5,
-                'tgt': {
-                    'process': 'Counter1',
-                    'port': 'IN'
-                }
-            },
-            {
-                'src': {
-                    'process': 'Counter1',
-                    'port': 'OUT'
-                },
-                'tgt': {
-                    'process': 'Pass',
-                    'port': 'IN'
-                }
-            },
-            {
-                'src': {
-                    'process': 'Pass',
-                    'port': 'OUT'
-                },
-                'tgt': {
-                    'process': 'Discard1',
-                    'port': 'IN'
-                }
-            },
-            {
-                'src': {
-                    'process': 'Generate',
-                    'port': 'OUT',
-                    'index': 2
-                },
-                'tgt': {
-                    'process': 'Discard1',
-                    'port': 'IN'
-                }
-            },
-            {
-                'src': {
-                    'process': 'Generate',
-                    'port': 'OUT',
-                    'index': 1
-                },
-                'tgt': {
-                    'process': 'Discard1',
-                    'port': 'IN'
-                }
-            }
-        ],
-        'inports': {},
-        'outports': {}
-    }
+    expected = serialized_network_fixture.copy()
 
     # Order of connections array shouldn't matter
     definition['connections'] = sorted(definition['connections'])
@@ -764,96 +772,43 @@ def test_network_serialization():
     assert definition == expected
 
 def test_network_deserialization():
-    definition = {
-        'processes': {
-            'Counter1': {
-                'component': 'rill.components.basic/Counter'
-            },
-            'Discard1': {
-                'component': 'tests.components/Discard'
-            },
-            'Pass': {
-                'component': 'tests.components/PassthruNet'
-            },
-            'Generate': {
-                'component': 'tests.components/GenerateArray'
-            }
-        },
-        'connections': [
-            {
-                'data': 5,
-                'tgt': {
-                    'process': 'Counter1',
-                    'port': 'IN'
-                }
-            },
-            {
-                'src': {
-                    'process': 'Counter1',
-                    'port': 'OUT'
-                },
-                'tgt': {
-                    'process': 'Pass',
-                    'port': 'IN'
-                }
-            },
-            {
-                'src': {
-                    'process': 'Pass',
-                    'port': 'OUT'
-                },
-                'tgt': {
-                    'process': 'Discard1',
-                    'port': 'IN'
-                }
-            },
-            {
-                'src': {
-                    'process': 'Generate',
-                    'port': 'OUT',
-                    'index': 2
-                },
-                'tgt': {
-                    'process': 'Discard1',
-                    'port': 'IN'
-                }
-            },
-            {
-                'src': {
-                    'process': 'Generate',
-                    'port': 'OUT',
-                    'index': 1
-                },
-                'tgt': {
-                    'process': 'Discard1',
-                    'port': 'IN'
-                }
-            }
-        ],
-        'inports': {},
-        'outports': {}
-    }
+    definition = serialized_network_fixture.copy()
 
     net = Network.from_dict(definition, {
         'rill.components.basic/Counter': Counter,
+        'rill.components.merge/Group': Group,
         'tests.components/Discard': Discard,
         'tests.components/PassthruNet': PassthruNet,
         'tests.components/GenerateArray': GenerateArray
     })
 
-    assert len(net.get_components().keys()) == 4
+    assert len(net.get_components().keys()) == 5
 
     Counter1 = net.get_component('Counter1')
     Discard1 = net.get_component('Discard1')
     Pass = net.get_component('Pass')
     Generate = net.get_component('Generate')
+    Merge = net.get_component('Merge')
 
-    assert Counter1.ports.OUT._connection.inport.component == Pass
-    assert Pass.ports.OUT._connection.inport.component == Discard1
-    assert Counter1.ports.IN._connection._content == 5
+    assert Counter1.ports.OUT._connection.inport.component is Pass
+    assert Pass.ports.OUT._connection.inport.component is Discard1
+    assert Counter1.ports.IN._connection._content is 5
 
-    assert Generate.ports.OUT.get_element(1)._connection.inport.component == Discard1
-    assert Generate.ports.OUT.get_element(2)._connection.inport.component == Discard1
+    assert (
+        Generate.ports.OUT.get_element(0)._connection.inport.component is Merge
+    )
+
+    assert (
+        Generate.ports.OUT.get_element(1)._connection.inport.component is Merge
+    )
+
+    assert (
+        Generate.ports.OUT.get_element(0)._connection.inport.index is 1
+    )
+
+    assert (
+        Generate.ports.OUT.get_element(1)._connection.inport.index is 2
+    )
 
     expected = net.to_dict()
 
@@ -1029,7 +984,7 @@ def test_export_of_exports():
     Head = net.get_component('Head')
     Tail = net.get_component('Tail')
 
-    assert Head.ports.OUT._connection.inport.component == Tail
+    assert Head.ports.OUT._connection.inport.component is Tail
 
     expected = net.to_dict()
 

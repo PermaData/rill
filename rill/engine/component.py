@@ -435,12 +435,12 @@ class Component(with_metaclass(ABCMeta, object)):
         return self.network.globals.get(key)
 
     @classmethod
-    def get_type(klass):
+    def get_type(cls):
         """
         Get component type for serialization
         """
-        return '{0}/{1}'.format(klass.__module__,
-                                klass.__name__)
+        return '{0}/{1}'.format(cls.__module__,
+                                cls.__name__)
 
 class _FunctionComponent(with_metaclass(ABCMeta, Component)):
     """

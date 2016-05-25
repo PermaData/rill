@@ -13,7 +13,11 @@ from rill.engine.packet import Packet
 
 
 class ExportComponent(Component):
+    """
+    Component that exports to a parent network
+    """
     is_export = True
+    subnet = None # Parent subnet component
 
 @inport("NAME", type=str)
 @inport("INDEX", type=int)
@@ -31,7 +35,7 @@ class SubIn(ExportComponent):
         if self.ports.OUT.is_closed():
             return
 
-        inport = self.parent.parent.ports[pname]
+        inport = self.subnet.ports[pname]
         index = self.ports.INDEX.receive_once()
         if index is not None:
             inport = inport[index]
@@ -72,7 +76,7 @@ class SubInSS(ExportComponent):
         if self.ports.OUT.is_closed():
             return
 
-        inport = self.parent.parent.ports[pname]
+        inport = self.subnet.ports[pname]
         index = self.ports.INDEX.receive_once()
         if index is not None:
             inport = inport[index]
@@ -124,7 +128,7 @@ class SubOut(ExportComponent):
         if pname is None:
             return
 
-        outport = self.parent.parent.ports[pname]
+        outport = self.subnet.ports[pname]
         index = self.ports.INDEX.receive_once()
         if index is not None:
             outport = outport[index]
@@ -154,7 +158,7 @@ class SubOutSS(ExportComponent):
         if pname is None:
             return
 
-        outport = self.parent.parent.ports[pname]
+        outport = self.subnet.ports[pname]
         index = self.ports.INDEX.receive_once()
         if index is not None:
             outport = outport[index]
@@ -180,7 +184,6 @@ class SubNet(with_metaclass(ABCMeta, Component)):
         # don't do deadlock testing in subnets - you need to consider
         # the whole net!
         kwargs['deadlock_test_interval'] = None
-        kwargs['parent'] = self
 
         if not sub_network:
             sub_network = Network(**kwargs)
@@ -251,6 +254,8 @@ class SubNet(with_metaclass(ABCMeta, Component)):
             if external_port.index is not None:
                 self.initialize(external_port.index, subcomp.ports.INDEX)
             self.sub_network.connect(internal_port, subcomp.ports.IN)
+
+        subcomp.subnet = self
 
 
     def execute(self):
