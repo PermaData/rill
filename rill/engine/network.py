@@ -815,7 +815,7 @@ def apply_network(network, inputs, outports=None):
     """
     from functools import reduce
     from rill.engine.subnet import SubNet
-    from rill.components.basic import Passthru, Capture
+    from rill.components.basic import Capture
     from rill.decorators import inport, outport
 
     if not outports:
@@ -836,14 +836,8 @@ def apply_network(network, inputs, outports=None):
     wrapper.add_component('ApplyNet', ApplyNet)
 
     for (port_name, value) in inputs.items():
-        pass_name = 'Pass_{}'.format(port_name)
-        pass_in = '{}.IN'.format(pass_name)
-        pass_out = '{}.OUT'.format(pass_name)
         sub_in = 'ApplyNet.{}'.format(port_name)
-
-        wrapper.add_component(pass_name, Passthru)
-        wrapper.connect(pass_out, sub_in)
-        wrapper.initialize(value, pass_in)
+        wrapper.initialize(value, sub_in)
 
     captures = {}
     for outport_name in outports:

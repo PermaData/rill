@@ -6,7 +6,7 @@ from past.builtins import basestring
 from rill.engine.component import Component, inport, outport, logger
 from rill.engine.network import Network
 from rill.engine.status import StatusValues
-from rill.engine.inputport import InputPort, BaseInputCollection
+from rill.engine.inputport import InputPort, BaseInputCollection, InitializationConnection
 from rill.engine.outputport import OutputPort, BaseOutputCollection
 from rill.engine.exceptions import FlowError
 from rill.engine.packet import Packet
@@ -42,12 +42,11 @@ class SubIn(ExportComponent):
 
         self.logger.debug("Accessing input port: {}".format(inport))
 
-        # FIXME: this is definitely broken:
         if inport.is_static():
             old_receiver = inport.component
-            iic = InitializationConnection(self, inport.name, inport._content)
-            # iic.network = iico.network
+            iic = InitializationConnection(inport._connection._content, inport)
 
+            iic.open()
             p = iic.receive()
             p.set_owner(self)
             self.ports.OUT.send(p)
