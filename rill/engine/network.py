@@ -793,7 +793,7 @@ class Network(object):
         return net
 
 
-def apply_network(network, inputs):
+def apply_network(network, inputs, outports=None):
     """
     Apply network like a function treating iips as arguments to inports
     and the values of outports as returned
@@ -805,6 +805,9 @@ def apply_network(network, inputs):
     inputs : dict
              map port names to iips
 
+    outports : array, optional
+               list of outports whose results should be collected
+
     Returns
     -------
     outputs : dict
@@ -815,14 +818,16 @@ def apply_network(network, inputs):
     from rill.components.basic import Passthru, Capture
     from rill.decorators import inport, outport
 
+    if not outports:
+        outports = network.outports.keys()
+
     class ApplyNet(SubNet):
         sub_network = network
         def define(self, network): pass
 
     reverse_apply = lambda cls, fn: fn(cls)
 
-    ApplyNet = reduce(reverse_apply,
-        map(outport, network.outports.keys()), ApplyNet)
+    ApplyNet = reduce(reverse_apply, map(outport, outports), ApplyNet)
 
     ApplyNet = reduce(reverse_apply,
         map(inport, network.inports.keys()), ApplyNet)
@@ -841,7 +846,7 @@ def apply_network(network, inputs):
         wrapper.initialize(value, pass_in)
 
     captures = {}
-    for outport_name in network.outports.keys():
+    for outport_name in outports:
         capture_name = 'Capture_{}'.format(outport_name)
         sub_out = 'ApplyNet.{}'.format(outport_name)
         capture_port_name = '{}.IN'.format(capture_name)

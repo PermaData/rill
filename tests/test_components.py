@@ -13,7 +13,7 @@ from rill.decorators import inport, outport, component, subnet
 
 from tests.components import *
 
-from rill.components.basic import Counter, Sort, Inject, Repeat, Cap
+from rill.components.basic import Counter, Sort, Inject, Repeat, Cap, Kick
 from rill.components.filters import First
 from rill.components.merge import Group
 from rill.components.split import RoundRobinSplit, Replicate
@@ -1016,4 +1016,26 @@ def test_network_apply():
     })
 
     assert outputs['OUT'] == 10
+
+def test_network_apply_with_outputs():
+    net = Network()
+    net.add_component('Add1', Add)
+    net.add_component('Add2', Add)
+    net.add_component('Kick', Kick)
+
+    net.connect('Add1.OUT', 'Add2.IN1')
+
+    net.export('Add1.IN1', 'IN1')
+    net.export('Add1.IN2', 'IN2')
+    net.export('Add2.IN2', 'IN3')
+    net.export('Add2.OUT', 'OUT')
+    net.export('Kick.OUT', 'Kick_OUT')
+
+    outputs = apply_network(net, {
+        'IN1': 1,
+        'IN2': 3,
+        'IN3': 6
+    }, ['OUT'])
+
+    assert outputs == {'OUT': 10}
 
