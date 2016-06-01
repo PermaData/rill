@@ -19,6 +19,7 @@ class ExportComponent(Component):
     is_export = True
     subnet = None # Parent subnet component
 
+
 @inport("NAME", type=str)
 @inport("INDEX", type=int)
 @outport("OUT")
@@ -202,7 +203,6 @@ class SubNet(with_metaclass(ABCMeta, Component)):
 
         for (name, internal_port) in self.sub_network.outports.items():
             self.export(internal_port, name, True)
-
 
     def export(self, internal_port, external_port, create=False):
         """

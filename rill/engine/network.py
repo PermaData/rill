@@ -625,23 +625,19 @@ class Network(object):
         if old_component is not None:
             return old_component
 
-    def export(self, internal_port_name, external_port_name):
+    def export(self, internal_port, external_port_name):
         """
         Exports component port for connecting to other networks
         as a sub network
 
         Parameters
         ----------
-        internal_port_name : str
-                             name of internal port
+        internal_port : ``rill.engine.outputport.OutputPort`` or
+            ``rill.engine.inputport.InputPort`` or str
         external_port_name : str
-                             name of port that will be exposed
-
-        Returns
-        -------
-        self : ``rill.engine.network.Network`
+            name of port that will be exposed
         """
-        internal_port = self.get_component_port(internal_port_name)
+        internal_port = self.get_component_port(internal_port)
 
         if isinstance(internal_port, InputPort):
             self.inports[external_port_name] = internal_port
@@ -649,65 +645,59 @@ class Network(object):
         elif isinstance(internal_port, OutputPort):
             self.outports[external_port_name] = internal_port
 
-        return self
-
     def to_dict(self):
         """
         Serialize network to dictionary
 
         Returns
-        ----------------
+        -------
         definition : dict
-                     json representation of network
-                     according to fbp json standard
+            json-serializable representation of network according to fbp json
+            standard
         """
+        def portdef(cname, p):
+            doc = {
+                'process': cname,
+                # FIXME: it should be easier to get this value from BasePort
+                'port': p._name if p.is_element() else p.name
+            }
+            if p.is_element():
+                doc['index'] = p.index
+            return doc
+
         definition = {
             'processes': {},
             'connections': [],
             'inports': {},
             'outports': {}
         }
-        for (name, component) in self.get_components().items():
-            if component.is_export: continue
+        for (comp_name, component) in self.get_components().items():
+            if component.is_export:
+                continue
 
-            definition['processes'][name] = {
+            definition['processes'][comp_name] = {
                 "component": component.get_type()
             }
 
             for inport in component.inports:
-                if not inport.is_connected(): continue
+                if not inport.is_connected():
+                    continue
 
                 if isinstance(inport._connection, InitializationConnection):
                     definition['connections'].append({
                         'data': inport._connection._content,
-                        'tgt': {
-                            'process': name,
-                            'port': inport.name
-                        }
+                        'tgt': portdef(comp_name, inport)
                     })
                 else:
                     for outport in inport._connection.outports:
+                        if outport.component.is_export:
+                            continue
+
                         sender = outport.component
-                        if outport.component.is_export: continue
-
                         connection = {
-                            'src': {
-                                'process': sender.get_name(),
-                                'port' : outport._name if outport.is_element()
-                                         else outport.name
-                            },
-                            'tgt': {
-                                'process': name,
-                                'port' : inport._name if inport.is_element()
-                                         else inport.name
-                            }
+                            'src': portdef(sender.get_name(), outport),
+                            'tgt': portdef(comp_name, inport)
                         }
-                        if outport.is_element():
-                            connection['src']['index'] = outport.index
-
-                        if inport.is_element():
-                            connection['tgt']['index'] = inport.index
-
                         definition['connections'].append(connection)
 
         for (name, inport) in self.inports.items():
@@ -732,63 +722,38 @@ class Network(object):
         Parameters
         ----------
         definition : dict
-                     defines network structure according to fbp json standard
-        components : dict
-                     maps component name to ``rill.enginge.component.Component`
+            network structure according to fbp json standard
+        components : dict[str, ``rill.enginge.component.Component``]
+            maps of component name to component
 
         Returns
         -------
-        net : ``rill.enginge.network.Network`
+        net : ``rill.enginge.network.Network``
         """
+        def portname(p):
+            n = '{}.{}'.format(p['process'], p['port'])
+            if 'index' in p:
+                n += '[{}]'.format(p['index'])
+            return n
+
         net = cls()
         for (name, spec) in definition['processes'].items():
             net.add_component(name, components[spec['component']])
 
         for connection in definition['connections']:
-            if connection.get('src'):
-                if connection['src'].get('index'):
-                    src = '{}.{}[{}]'.format(
-                        connection['src']['process'],
-                        connection['src']['port'],
-                        connection['src']['index']
-                    )
-
-                else:
-                    src = '{}.{}'.format(
-                        connection['src']['process'],
-                        connection['src']['port']
-                    )
-
-                if connection['tgt'].get('index'):
-                    tgt = '{}.{}[{}]'.format(
-                        connection['tgt']['process'],
-                        connection['tgt']['port'],
-                        connection['tgt']['index']
-                    )
-
-                else:
-                    tgt = '{}.{}'.format(
-                        connection['tgt']['process'],
-                        connection['tgt']['port']
-                    )
-
+            tgt = portname(connection['tgt'])
+            if 'src' in connection:
+                src = portname(connection['src'])
                 net.connect(src, tgt)
             else:
                 data = connection['data']
-                tgt = '{}.{}'.format(
-                    connection['tgt']['process'],
-                    connection['tgt']['port']
-                )
-
                 net.initialize(data, tgt)
 
         for (name, inport) in definition['inports'].items():
-            net.export('{}.{}'.format(inport['process'], inport['port']), name)
+            net.export(portname(inport), name)
 
         for (name, outport) in definition['outports'].items():
-            net.export('{}.{}'.format(
-                outport['process'], outport['port']
-            ), name)
+            net.export(portname(outport), name)
 
         return net
 
@@ -800,20 +765,17 @@ def apply_network(network, inputs, outports=None):
 
     Parameters
     ----------
-    network : ``rill.engine.network.Network`
-
-    inputs : dict
-             map port names to iips
-
-    outports : array, optional
-               list of outports whose results should be collected
+    network : ``rill.engine.network.Network``
+    inputs : dict[str, Any]
+        map port names to iips
+    outports : list[str], optional
+        list of outports whose results should be collected
 
     Returns
     -------
     outputs : dict
-              map network outport names to values
+        map network outport names to values
     """
-    from functools import reduce
     from rill.engine.subnet import SubNet
     from rill.components.basic import Capture
     from rill.decorators import inport, outport
@@ -823,14 +785,14 @@ def apply_network(network, inputs, outports=None):
 
     class ApplyNet(SubNet):
         sub_network = network
-        def define(self, network): pass
+        def define(self, network):
+            pass
 
-    reverse_apply = lambda cls, fn: fn(cls)
+    for port_name in outports:
+        outport(port_name)(ApplyNet)
 
-    ApplyNet = reduce(reverse_apply, map(outport, outports), ApplyNet)
-
-    ApplyNet = reduce(reverse_apply,
-        map(inport, network.inports.keys()), ApplyNet)
+    for port_name in network.inports.keys():
+        inport(port_name)(ApplyNet)
 
     wrapper = Network()
     wrapper.add_component('ApplyNet', ApplyNet)
