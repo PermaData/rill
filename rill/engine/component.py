@@ -141,6 +141,33 @@ class Component(with_metaclass(ABCMeta, object)):
                 [x.get_name() for x in self.get_parents()] + [self.get_name()])
         return self._full_name
 
+    @classmethod
+    def get_spec(cls):
+        """
+        Get a fbp-protocol-compatible component spec
+
+        Returns
+        -------
+        dict
+        """
+        import textwrap
+        from rill.engine.subnet import SubNet
+
+        return {
+            'name': '{0}/{1}'.format(cls.__module__, cls.__name__),
+            'description': textwrap.dedent(cls.__doc__ or '').strip(),
+            #'icon': '',
+            'subgraph': issubclass(cls, SubNet),
+            'inPorts': [
+                indef.get_spec()
+                for indef in cls.inport_definitions
+            ],
+            'outPorts': [
+                outdef.get_spec()
+                for outdef in cls.outport_definitions
+            ]
+        }
+
     def init(self):
         pass
 

@@ -43,6 +43,25 @@ class PortDefinition(object):
         ptype = self.get_port_type()
         return ptype(component, **self.args)
 
+    def get_spec(self):
+        """
+        Get a fbp-protocol-compatible component spec
+
+        Returns
+        -------
+        dict
+        """
+        from rill.engine.types import get_type_handler
+        spec = {
+            'id': self.args['name'],
+            'description': self.args['description'],
+            'addressable': self.array,
+            'required': (not self.args['optional']),
+        }
+
+        spec.update(get_type_handler(self.args['type']).get_spec())
+        return spec
+
 
 class InputPortDefinition(PortDefinition):
     """
@@ -81,6 +100,11 @@ class InputPortDefinition(PortDefinition):
                    optional=port.optional, static=port.auto_receive,
                    default=port.default)
 
+    def get_spec(self):
+        spec = super(InputPortDefinition, self).get_spec()
+        spec['default'] = self.args['default']
+        return spec
+
 
 class OutputPortDefinition(PortDefinition):
     """
@@ -109,3 +133,8 @@ class OutputPortDefinition(PortDefinition):
                    fixed_size=port.fixed_size if port.is_array() else None,
                    description=port.description,
                    optional=port.optional)
+
+    def get_spec(self):
+        spec = super(OutputPortDefinition, self).get_spec()
+        spec.pop('values')
+        return spec

@@ -9,7 +9,6 @@ from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 import inspect
 import functools
-import textwrap
 import traceback
 import datetime
 
@@ -29,11 +28,6 @@ log = logging.getLogger(__name__)
 
 class RuntimeError(FlowError):
     pass
-
-
-def long_class_name(klass):
-    return '{0}/{1}'.format(klass.__module__,
-                            klass.__name__)
 
 
 def short_class_name(klass):
@@ -58,26 +52,6 @@ class Runtime(object):
     each running on their own greelent.
     """
     PROTOCOL_VERSION = '0.5'
-
-    # FIXME: move this to rill.engine.types
-    # Mapping of native Python types to FBP protocol types
-    _type_map = {
-        str: 'string',
-        unicode: 'string',
-        bool: 'boolean',
-        int: 'int',
-        float: 'number',
-        complex: 'number',
-        dict: 'object',
-        list: 'array',
-        tuple: 'array',
-        set: 'array',
-        frozenset: 'array',
-        #color
-        #date
-        #function
-        #buffer
-    }
 
     def __init__(self):
         self.log = logging.getLogger('%s.%s' % (self.__class__.__module__,
@@ -141,7 +115,7 @@ class Runtime(object):
 
     def register_component(self, component_class, overwrite=False):
         """
-        Registers a component class.
+        Register a component class.
 
         Parameters
         ----------
@@ -156,22 +130,22 @@ class Runtime(object):
             raise ValueError('component_class must be a class that inherits '
                              'from Component')
 
-        long_name = long_class_name(component_class)
-        short_name = short_class_name(component_class)
+        spec = component_class.get_spec()
+        name = spec['name']
 
-        if long_name in self._component_types and not overwrite:
-            raise ValueError("Component {0} already registered".format(
-                long_name))
+        if name in self._component_types and not overwrite:
+            raise ValueError("Component {0} already registered".format(name))
 
-        self.log.debug('Registering component: {0}'.format(long_name))
+        self.log.debug('Registering component: {0}'.format(name))
 
-        self._component_types[long_name] = {
+        self._component_types[name] = {
             'class': component_class,
-            'spec': self._create_component_spec(long_name, component_class)
+            'spec': spec
         }
 
     def register_module(self, module, overwrite=False):
         """
+        Register all component classes within a module.
 
         Parameters
         ----------
@@ -203,42 +177,6 @@ class Runtime(object):
         if registered == 0:
             self.log.warn('No components were found in module: {}'.format(
                 module.__name__))
-
-    def _create_component_spec(self, component_class_name, component_class):
-        if not issubclass(component_class, Component):
-            raise ValueError('component_class must be a Component')
-
-        print component_class
-        return {
-            'name': component_class_name,
-            'description': textwrap.dedent(component_class.__doc__ or '').strip(),
-            #'icon': '',
-            'subgraph': issubclass(component_class, SubNet),
-            'inPorts': [
-                {
-                    'id': inport.args['name'],
-                    # 'type': inport.args['type'].basic_type_id(),
-                    'type': self._type_map.get(inport.args['type'], 'object'),
-                    'description': inport.args['description'],
-                    'addressable': inport.array,
-                    'required': (not inport.args['optional']),
-                    #'values': []
-                    'default': inport.default
-                }
-                for inport in component_class.inport_definitions
-            ],
-            'outPorts': [
-                {
-                    'id': outport.args['name'],
-                    # 'type': outport.args['type'].basic_type_id(),
-                    'type': self._type_map.get(outport.args['type'], 'object'),
-                    'description': outport.args['description'],
-                    'addressable': outport.array,
-                    'required': (not outport.args['optional'])
-                }
-                for outport in component_class.outport_definitions
-            ]
-        }
 
     def get_source_code(self, component_name):
         # FIXME:

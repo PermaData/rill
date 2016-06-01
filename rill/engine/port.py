@@ -467,4 +467,3 @@ class PortCollection(BasePortCollection):
     def __setitem__(self, item, port):
         self._ports[item] = port
         setattr(self, item, port)
-
