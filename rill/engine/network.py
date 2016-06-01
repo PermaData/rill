@@ -344,6 +344,9 @@ class Network(object):
         # net.interrupt()
 
     def _build_runners(self):
+        """
+        Populate `self.runners` with a runner for each component.
+        """
         self.runners = OrderedDict()
         for name, comp in self._components.items():
             runner = ComponentRunner(comp)
@@ -361,6 +364,9 @@ class Network(object):
             raise FlowError("Errors opening ports")
 
     def resume(self):
+        """
+        Resume a graph that has been suspended.
+        """
         self_starters = []
         for runner in self.runners.values():
             for port in runner.component.inports:
@@ -455,12 +461,20 @@ class Network(object):
                 self._signal_deadlock(statuses)
 
     def _signal_deadlock(self, statuses):
+        # FIXME: move error messages into NetworkDeadlock and get rid of this method?
         logger.error("Network has deadlocked")
         for status, objs in statuses:
             logger.error("  {:<13}{{}}".format(status), args=objs)
         raise NetworkDeadlock("Deadlock detected in Network", statuses)
 
     def _test_deadlocks(self):
+        """
+        Test the network for deadlocks
+
+        Raises
+        ------
+        ``rill.exceptions.NetworkDeadlock``
+        """
         import gevent
         deadlock_status = None
         while self.active:
