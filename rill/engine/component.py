@@ -6,20 +6,10 @@ from abc import ABCMeta, abstractmethod
 from future.utils import with_metaclass
 
 from rill.engine.port import PortCollection, flatten_arrays, is_null_port
-from rill.engine.outputport import OutputPort, OutputArray
-from rill.engine.inputport import InputPort, InputArray
 from rill.engine.packet import Packet, Chain
 from rill.engine.exceptions import FlowError, ComponentException
 from rill.engine.utils import LogFormatter
 from rill.decorators import inport, outport
-
-# FIXME: put these on InputInterface
-inport._static_port_type = InputPort
-inport._array_port_type = InputArray
-
-# FIXME: put these on OutputPort
-outport._static_port_type = OutputPort
-outport._array_port_type = OutputArray
 
 
 PORT_NAME_REG = r"^([a-zA-Z][_a-zA-Z0-9]*)(?:\[(\d+)\])?$"
@@ -32,7 +22,9 @@ logger = LogFormatter(_logger, {})
 @inport('IN_NULL')
 @outport('OUT_NULL')
 class Component(with_metaclass(ABCMeta, object)):
+    # list[rill.engine.portdef.InputPortDefinition]:
     inport_definitions = []
+    # list[rill.engine.portdef.OutputPortDefinition]:
     outport_definitions = []
     _self_starting = False
     _must_run = False
