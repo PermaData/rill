@@ -795,21 +795,16 @@ def apply_network(network, inputs, outports=None):
         inport(port_name)(ApplyNet)
 
     wrapper = Network()
-    wrapper.add_component('ApplyNet', ApplyNet)
+    apply = wrapper.add_component('ApplyNet', ApplyNet)
 
-    for (port_name, value) in inputs.items():
-        sub_in = 'ApplyNet.{}'.format(port_name)
-        wrapper.initialize(value, sub_in)
+    for (port_name, content) in inputs.items():
+        wrapper.initialize(content, apply.port(port_name))
 
     captures = {}
     for outport_name in outports:
         capture_name = 'Capture_{}'.format(outport_name)
-        sub_out = 'ApplyNet.{}'.format(outport_name)
-        capture_port_name = '{}.IN'.format(capture_name)
-
         capture = wrapper.add_component(capture_name, Capture)
-        wrapper.connect(sub_out, capture_port_name)
-
+        wrapper.connect(apply.port(outport_name), capture.port('IN'))
         captures[outport_name] = capture
 
     wrapper.go()

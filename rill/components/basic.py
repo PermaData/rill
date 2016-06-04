@@ -194,8 +194,13 @@ def Cap(IN, MAX, OUT):
         else:
             OUT.send(p)
 
+
 @inport("IN", description="Value to be captured")
 class Capture(Component):
+    """
+    Capture a single value and store it on an internal attribute.
+    Useful for testing and debugging.
+    """
     def execute(self):
         captured = self.ports.IN.receive_once()
         if captured is None:

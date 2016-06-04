@@ -256,7 +256,6 @@ class SubNet(with_metaclass(ABCMeta, Component)):
 
         subcomp.subnet = self
 
-
     def execute(self):
         # self.get_components().clear()
         # FIXME:

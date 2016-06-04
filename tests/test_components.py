@@ -238,6 +238,7 @@ def test_basic_connections():
     assert dis.ports['IN'].component is dis
     assert isinstance(dis.ports['IN'].receiver, ComponentRunner)
 
+
 def test_fixed_array_connections():
     net = Network()
     gen = net.add_component("Generate", GenerateFixedSizeArray)

@@ -442,6 +442,7 @@ class Component(with_metaclass(ABCMeta, object)):
         return '{0}/{1}'.format(cls.__module__,
                                 cls.__name__)
 
+
 class _FunctionComponent(with_metaclass(ABCMeta, Component)):
     """
     Base class for components created from functions via

@@ -50,7 +50,6 @@ def test_subnet_with_substreams(net, discard):
     ]
 
 
-
 def test_subnet_decorator():
     @outport("OUT")
     @inport("IN")
@@ -78,7 +77,6 @@ def test_subnet_decorator():
     assert dis.values == [
         '', '000005', '000004', '000003', '000002', '000001', '',
     ]
-
 
 
 def test_initialize_subnet():

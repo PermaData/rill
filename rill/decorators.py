@@ -148,7 +148,7 @@ def subnet(name):
 
     Returns
     -------
-    subnet : ``rill.engine.subnet.SubNet`
+    subnet : ``rill.engine.subnet.SubNet`` class
     """
     from rill.engine.subnet import SubNet
 
