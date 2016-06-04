@@ -672,7 +672,7 @@ class Network(object):
             'outports': {}
         }
         for (comp_name, component) in self.get_components().items():
-            if component.is_export:
+            if component.hidden:
                 continue
 
             definition['processes'][comp_name] = {
@@ -690,7 +690,7 @@ class Network(object):
                     })
                 else:
                     for outport in inport._connection.outports:
-                        if outport.component.is_export:
+                        if outport.component.hidden:
                             continue
 
                         sender = outport.component

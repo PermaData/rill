@@ -16,8 +16,8 @@ class ExportComponent(Component):
     """
     Component that exports to a parent network
     """
-    is_export = True
-    subnet = None # Parent subnet component
+    hidden = True
+    subnet = None  # Parent subnet component
 
 
 @inport("NAME", type=str)
