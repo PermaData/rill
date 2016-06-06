@@ -41,10 +41,7 @@ class ComponentRunner(Greenlet):
         self._null_output = None
 
         self.network = component.network
-        self._must_run = component._must_run
-        self._self_starting = component._self_starting
-
-        self.auto_starting = False  # initial value is set externally
+        self.has_run = False
 
         # used when evaluating component statuses for deadlocks
         self.curr_conn = None  # set externally
@@ -186,7 +183,7 @@ class ComponentRunner(Greenlet):
         """
         if self.is_terminated():
             return
-        if not self.started():
+        if not self.active():
             self.start()
         else:
             self.trace_locks("act - lock")
@@ -201,7 +198,22 @@ class ComponentRunner(Greenlet):
             finally:
                 self.trace_locks("act - unlock")
 
-    def _await_actionable_input_state(self):
+    @property
+    def self_starting(self):
+        if self.has_run:
+            return False
+        if self.component._self_starting:
+            return True
+        for port in self.component.inports:
+            if port.is_connected() and not port.is_static():
+                return False
+        return True
+
+    @property
+    def must_run(self):
+        return not self.has_run and self.component._must_run
+
+    def is_all_drained(self):
         """
         Wait for packets to arrive or for all ports to be drained.
 
@@ -252,17 +264,16 @@ class ComponentRunner(Greenlet):
             if self.component.ports.OUT_NULL.is_connected():
                 self._null_output = self.component.ports.OUT_NULL
 
-            if self._self_starting:
-                self.auto_starting = True
-            else:
-                all_drained = self._await_actionable_input_state()
+            self_started = self.self_starting
 
-            while (self.auto_starting or
-                       not all_drained or
+            while (self_started or
+                       not self.is_all_drained() or
                            self._null_input is not None or
-                       (all_drained and self._must_run) or
+                       (self.is_all_drained() and self.must_run) or
                            self.component.stack_size() > 0):
                 self._null_input = None
+                self.has_run = True
+
                 # FIXME: added has_error to allow this loop to exit if another
                 # thread calls parent.signal_error() to set our status to ERROR
                 if self.is_terminated() or self.has_error():
@@ -287,7 +298,7 @@ class ComponentRunner(Greenlet):
                         "deactivation".format(self.component._packet_count))
 
                 # FIXME: what is the significance of closing and reopening the InitializationConnections?
-                # - _await_actionable_input_state only checks Connections.
+                # - is_all_drained only checks Connections.
                 # - tests succeed if we simply hard-wire InitializationConnection to always open
                 # - it ensures that it yields a new result when component is re-activated
                 for ip in self.component.inports:
@@ -297,15 +308,10 @@ class ComponentRunner(Greenlet):
                         #  raise FlowError("Component deactivated with IIP port not closed: " + self.get_name())
                         #
 
-                self._must_run = False
-                self._self_starting = False
-
-                if self.auto_starting:
+                if self_started:
                     break
 
-                all_drained = self._await_actionable_input_state()
-
-                if all_drained and self.component.stack_size() == 0:
+                if self.is_all_drained() and self.component.stack_size() == 0:
                     break  # while
 
             if self._null_output is not None:
@@ -351,5 +357,5 @@ class ComponentRunner(Greenlet):
                 self.component.parent.signal_error(e)
             self.close_ports()
 
-    def started(self):
+    def active(self):
         return bool(self)

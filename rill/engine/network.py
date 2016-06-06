@@ -379,22 +379,12 @@ class Network(object):
                 runner.kill()
                 continue
 
-            elif runner.status in (StatusValues.SUSP_RECV,
-                                   StatusValues.SUSP_SEND,
-                                   StatusValues.DORMANT,
-                                   StatusValues.ACTIVE):
+            elif runner.self_starting or \
+                    runner.status in (StatusValues.SUSP_RECV,
+                                      StatusValues.SUSP_SEND,
+                                      StatusValues.DORMANT,
+                                      StatusValues.ACTIVE):
                 self_starters.append(runner)
-            else:
-                runner.auto_starting = True
-
-                if not runner.component._self_starting:
-                    for port in runner.component.inports:
-                        if port.is_connected() and not port.is_static():
-                            runner.auto_starting = False
-                            break
-
-                if runner.auto_starting:
-                    self_starters.append(runner)
 
         if not self_starters:
             raise FlowError("No self-starters found")
@@ -410,18 +400,7 @@ class Network(object):
         self.reset()
         self._build_runners()
         self._open_ports()
-        self_starters = []
-        for runner in self.runners.values():
-            runner.auto_starting = True
-
-            if not runner.component._self_starting:
-                for port in runner.component.inports:
-                    if port.is_connected() and not port.is_static():
-                        runner.auto_starting = False
-                        break
-
-            if runner.auto_starting:
-                self_starters.append(runner)
+        self_starters = [r for r in self.runners.values() if r.self_starting]
 
         if not self_starters:
             raise FlowError("No self-starters found")
