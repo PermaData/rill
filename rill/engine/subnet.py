@@ -173,11 +173,9 @@ class SubNet(with_metaclass(ABCMeta, Component)):
     """
     A component that defines and executes a sub-network of components
     """
-    sub_network = None
     def __init__(self, name, parent):
         Component.__init__(self, name, parent)
-        if self.sub_network is None:
-            self.sub_network = Network()
+        self.sub_network = None
 
     @abstractmethod
     def define(self, net):
@@ -193,6 +191,7 @@ class SubNet(with_metaclass(ABCMeta, Component)):
 
     def _init(self):
         super(SubNet, self)._init()
+        self.sub_network = Network()
         self.define(self.sub_network)
         # we set these after define because we're paranoid:
         # don't do deadlock testing in subnets - you need to consider
@@ -201,6 +200,8 @@ class SubNet(with_metaclass(ABCMeta, Component)):
         self.sub_network.parent = self.parent
         self.sub_network.name = self._name
 
+        # FIXME: won't setting create=True  try to recreate ports previously
+        # defined using @inport and @outport?
         for (name, internal_port) in self.sub_network.inports.items():
             self._export(internal_port, name, create=True)
 
@@ -371,3 +372,26 @@ class SubOI(Component):
         self.inport = self.open_input("IN")
         self.outport = self.open_output("OUT")
 
+
+def make_subnet(name, net):
+    """
+    Make a ``SubNet`` class from a ``Network`` instance.
+
+    Parameters
+    ----------
+    name : str
+    net : ``rill.engine.network.Network``
+
+    Returns
+    -------
+    ``SubNet`` class
+    """
+    def define(self, _):
+        self.sub_network = net
+
+    attrs = {
+        'name': name,
+        'define': define,
+        'sub_network': net
+    }
+    return type(name, (SubNet,), attrs)

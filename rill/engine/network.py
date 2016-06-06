@@ -754,7 +754,7 @@ class Network(object):
 def apply_network(network, inputs, outports=None):
     """
     Apply network like a function treating iips as arguments to inports
-    and the values of outports as returned
+    and returning the values of outports
 
     Parameters
     ----------
@@ -769,18 +769,17 @@ def apply_network(network, inputs, outports=None):
     outputs : dict
         map network outport names to values
     """
-    from rill.engine.subnet import SubNet
+    from rill.engine.subnet import make_subnet
     from rill.components.basic import Capture
     from rill.decorators import inport, outport
 
     if not outports:
+        # FIXME: I believe this should default to *unconnected* output ports
         outports = network.outports.keys()
 
-    class ApplyNet(SubNet):
-        sub_network = network
-        def define(self, network):
-            pass
+    ApplyNet = make_subnet('ApplyNet', network)
 
+    # FIXME: shouldn't this happen automatically via exported ports on the Network?
     for port_name in outports:
         outport(port_name)(ApplyNet)
 
