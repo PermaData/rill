@@ -1,81 +1,21 @@
 from past.builtins import basestring
 
-from rill.utils import Annotation, FlagAnnotation, NOT_SET
-
+from rill.utils import ProxyAnnotation, FlagAnnotation
+from rill.engine.portdef import InputPortDefinition, OutputPortDefinition
 
 __all__ = ['inport', 'outport', 'must_run', 'self_starting', 'component', 'subnet']
 
 
-class _Port(Annotation):
+class inport(ProxyAnnotation):
     multi = True
-
-    _kind = None
-    _static_port_type = None
-    _array_port_type = None
-
-    def __init__(self, name, type=None, array=False, fixed_size=None,
-                 description='', optional=True):
-        self.array = array
-        self.args = {
-            'name': name,
-            'type': type,
-            'optional': optional,
-            'description': description
-        }
-        if fixed_size is not None:
-            self.args['fixed_size'] = fixed_size
-        super(_Port, self).__init__(self)
-
-    def create_port(self, component):
-        if self.args.get('fixed_size') and not self.array:
-            raise ValueError(
-                "{}.{}: @{} specified fixed_size but not array".format(
-                    self, self.args['name'],
-                    self.__class__.__name__))
-        if self.array:
-            ptype = self._array_port_type
-        else:
-            ptype = self._static_port_type
-        return ptype(component, **self.args)
-
-
-class inport(_Port):
-    """
-    Decorator to add an input port to a component.
-    """
     attribute = 'inport_definitions'
-    _kind = 'input'
-
-    def __init__(self, name, type=None, array=False, fixed_size=None,
-                 description='', optional=True, static=False, default=NOT_SET):
-        super(inport, self).__init__(
-            name, type=type, array=array, fixed_size=fixed_size,
-            description=description, optional=optional)
-        self.args['static'] = static
-        self.args['default'] = default
-
-    @classmethod
-    def from_port(cls, port, name=None):
-        return cls(name or port._name, type=port.type, array=port.is_array(),
-                   fixed_size=port.fixed_size if port.is_array() else None,
-                   description=port.description,
-                   optional=port.optional, static=port.auto_receive,
-                   default=port.default)
+    proxy_type = InputPortDefinition
 
 
-class outport(_Port):
-    """
-    Decorator to add an output port to a component.
-    """
+class outport(ProxyAnnotation):
+    multi = True
     attribute = 'outport_definitions'
-    _kind = 'output'
-
-    @classmethod
-    def from_port(cls, port, name=None):
-        return cls(name or port._name, type=port.type, array=port.is_array(),
-                   fixed_size=port.fixed_size if port.is_array() else None,
-                   description=port.description,
-                   optional=port.optional)
+    proxy_type = OutputPortDefinition
 
 
 # FIXME: could be a nice feature to make users add an explanation, e.g.
@@ -105,6 +45,9 @@ ANNOTATIONS = (
 
 
 def component(name=None, **kwargs):
+    """
+    Decorator to create a component from a function.
+    """
     from rill.engine.component import _FunctionComponent
 
     def decorator(func):

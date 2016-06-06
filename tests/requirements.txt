@@ -4,3 +4,4 @@ tox>=2.3.1
 coverage
 python-coveralls
 pytest-cov
+mock

@@ -347,6 +347,9 @@ class Network(object):
         # net.interrupt()
 
     def _build_runners(self):
+        """
+        Populate `self.runners` with a runner for each component.
+        """
         self.runners = OrderedDict()
         for name, comp in self._components.items():
             runner = ComponentRunner(comp)
@@ -364,6 +367,9 @@ class Network(object):
             raise FlowError("Errors opening ports")
 
     def resume(self):
+        """
+        Resume a graph that has been suspended.
+        """
         self_starters = []
         for runner in self.runners.values():
             for port in runner.component.inports:
@@ -376,22 +382,12 @@ class Network(object):
                 runner.kill()
                 continue
 
-            elif runner.status in (StatusValues.SUSP_RECV,
-                                   StatusValues.SUSP_SEND,
-                                   StatusValues.DORMANT,
-                                   StatusValues.ACTIVE):
+            elif runner.self_starting or \
+                    runner.status in (StatusValues.SUSP_RECV,
+                                      StatusValues.SUSP_SEND,
+                                      StatusValues.DORMANT,
+                                      StatusValues.ACTIVE):
                 self_starters.append(runner)
-            else:
-                runner.auto_starting = True
-
-                if not runner.component._self_starting:
-                    for port in runner.component.inports:
-                        if port.is_connected() and not port.is_static():
-                            runner.auto_starting = False
-                            break
-
-                if runner.auto_starting:
-                    self_starters.append(runner)
 
         if not self_starters:
             raise FlowError("No self-starters found")
@@ -407,18 +403,7 @@ class Network(object):
         self.reset()
         self._build_runners()
         self._open_ports()
-        self_starters = []
-        for runner in self.runners.values():
-            runner.auto_starting = True
-
-            if not runner.component._self_starting:
-                for port in runner.component.inports:
-                    if port.is_connected() and not port.is_static():
-                        runner.auto_starting = False
-                        break
-
-            if runner.auto_starting:
-                self_starters.append(runner)
+        self_starters = [r for r in self.runners.values() if r.self_starting]
 
         if not self_starters:
             raise FlowError("No self-starters found")
@@ -458,12 +443,20 @@ class Network(object):
                 self._signal_deadlock(statuses)
 
     def _signal_deadlock(self, statuses):
+        # FIXME: move error messages into NetworkDeadlock and get rid of this method?
         logger.error("Network has deadlocked")
         for status, objs in statuses:
             logger.error("  {:<13}{{}}".format(status), args=objs)
         raise NetworkDeadlock("Deadlock detected in Network", statuses)
 
     def _test_deadlocks(self):
+        """
+        Test the network for deadlocks
+
+        Raises
+        ------
+        ``rill.exceptions.NetworkDeadlock``
+        """
         import gevent
         deadlock_status = None
         while self.active:

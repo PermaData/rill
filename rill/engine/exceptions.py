@@ -12,5 +12,9 @@ class ComponentException(FlowError):
     pass
 
 
-class PacketValidationError(FlowError):
+class TypeHandlerException(FlowError):
+    pass
+
+
+class PacketValidationError(TypeHandlerException):
     pass

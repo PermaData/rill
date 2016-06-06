@@ -1,4 +1,4 @@
-from rill.utils import Annotation, FlagAnnotation
+from rill.utils import Annotation, ProxyAnnotation, FlagAnnotation
 import pytest
 
 
@@ -16,11 +16,22 @@ class NamedThing(Annotation):
     pass
 
 
+class Foo(object):
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+
+class ProxyThing(ProxyAnnotation):
+    proxy_type = Foo
+
+
 def test_annotation_basic():
     @AddAThing(2)
     @AddAThing(3)
     @BooleanThing
     @NamedThing("this")
+    @ProxyThing('xx', 'yy')
     class This(object):
         pass
 
@@ -28,6 +39,10 @@ def test_annotation_basic():
 
     assert BooleanThing.get(This) is True
     assert NamedThing.get(This) == 'this'
+    proxied = ProxyThing.get(This)
+    assert isinstance(proxied, Foo)
+    assert proxied.x == 'xx'
+    assert proxied.y == 'yy'
 
 
 def test_annotation_defaults():

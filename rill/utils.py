@@ -14,13 +14,41 @@ class Annotation(object):
     Attributes
     ----------
     multi : bool
-        Whether the annotion can be repeated to create a list of values
+        Whether the annotation can be repeated to create a list of values
     default : object
         default value if the annotation is not present
     """
+    # sub-classes provide:
     multi = False
     default = None
     attribute = None
+
+    def __init__(self, value):
+        """
+        Called to add arguments to the decorator.
+        """
+        # store this value, so it can be used by __call__
+        self._value = value
+
+    def __call__(self, obj):
+        """
+        Called when used as a decorator.
+
+        Parameters
+        ----------
+        obj
+            the object being decorated
+
+        Returns
+        -------
+        obj
+            the original object
+        """
+        if self.multi:
+            self._append(obj, self._value)
+        else:
+            self.set(obj, self._value)
+        return obj
 
     @classmethod
     def seen(cls, obj):
@@ -104,16 +132,17 @@ class Annotation(object):
         # when maintaining order, is not usually intuitive
         values.insert(0, value)
 
-    def __init__(self, value):
-        # store this value, so it can be used by __call__
-        self._value = value
 
-    def __call__(self, obj):
-        if self.multi:
-            self._append(obj, self._value)
-        else:
-            self.set(obj, self._value)
-        return obj
+class ProxyAnnotation(Annotation):
+    """
+    Like Annotation, but instead of instantiating with a value instance,
+    is instantiated with arguments for the class defined at `proxy_type`.
+    """
+    # sub-classes provide:
+    proxy_type = None
+
+    def __init__(self, *args, **kwargs):
+        super(ProxyAnnotation, self).__init__(self.proxy_type(*args, **kwargs))
 
 
 class FlagAnnotation(Annotation):
@@ -123,6 +152,15 @@ class FlagAnnotation(Annotation):
     default = False
 
     def __new__(cls, obj):
+        """
+        Parameters
+        ----------
+        obj : the object being decorated
+
+        Returns
+        -------
+        obj : the object being decorated
+        """
         cls.set(obj, True)
         return obj
 
