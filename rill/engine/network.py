@@ -676,7 +676,8 @@ class Network(object):
                 continue
 
             definition['processes'][comp_name] = {
-                "component": component.get_type()
+                "component": component.get_type(),
+                "metadata" : component.metadata
             }
 
             for inport in component.inports:
@@ -738,7 +739,9 @@ class Network(object):
 
         net = cls()
         for (name, spec) in definition['processes'].items():
-            net.add_component(name, components[spec['component']])
+            component = net.add_component(name, components[spec['component']])
+            if spec.get('metadata'):
+                component.metadata.update(spec['metadata'])
 
         for connection in definition['connections']:
             tgt = portname(connection['tgt'])

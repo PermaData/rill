@@ -642,19 +642,27 @@ def test_first(net, discard):
 serialized_network_fixture = {
     'processes': {
         'Counter1': {
-            'component': 'rill.components.basic/Counter'
+            'component': 'rill.components.basic/Counter',
+            'metadata': {
+                'x': 20.0,
+                'y': 300.5
+            }
         },
         'Discard1': {
-            'component': 'tests.components/Discard'
+            'component': 'tests.components/Discard',
+            'metadata': {}
         },
         'Pass': {
-            'component': 'tests.components/PassthruNet'
+            'component': 'tests.components/PassthruNet',
+            'metadata': {}
         },
         'Generate': {
-            'component': 'tests.components/GenerateArray'
+            'component': 'tests.components/GenerateArray',
+            'metadata': {}
         },
         'Merge': {
-            'component': 'rill.components.merge/Group'
+            'component': 'rill.components.merge/Group',
+            'metadata': {}
         }
     },
     'connections': [
@@ -721,7 +729,11 @@ serialized_network_fixture['connections'] = sorted(
 def test_network_serialization():
     net = Network()
 
-    net.add_component('Counter1', Counter)
+    counter = net.add_component('Counter1', Counter)
+    counter.metadata.update({
+        'x': 20.0,
+        'y': 300.5
+    })
     net.add_component('Pass', PassthruNet)
     net.add_component('Discard1', Discard)
     net.add_component('Generate', GenerateArray)
@@ -764,6 +776,10 @@ def test_network_deserialization():
     Merge = net.get_component('Merge')
 
     assert Counter1.ports.OUT._connection.inport.component is Pass
+    assert Counter1.metadata == {
+        'x': 20.0,
+        'y': 300.5
+    }
     assert Pass.ports.OUT._connection.inport.component is Discard1
     assert Counter1.ports.IN._connection._content is 5
 
@@ -817,10 +833,12 @@ def test_export_serialization():
     expected = {
         'processes': {
             'Head': {
-                'component': 'rill.components.timing/SlowPass'
+                'component': 'rill.components.timing/SlowPass',
+                'metadata': {}
             },
             'Tail': {
-                'component': 'rill.components.timing/SlowPass'
+                'component': 'rill.components.timing/SlowPass',
+                'metadata': {}
             }
         },
         'connections': [
@@ -873,10 +891,12 @@ def test_export_of_exports():
     definition = {
         'processes': {
             'Head': {
-                'component': 'rill.components.timing/SlowPass'
+                'component': 'rill.components.timing/SlowPass',
+                'metadata': {}
             },
             'Tail': {
-                'component': 'rill.components.timing/SlowPass'
+                'component': 'rill.components.timing/SlowPass',
+                'metadata': {}
             }
         },
         'connections': [
