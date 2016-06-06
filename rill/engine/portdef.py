@@ -82,7 +82,7 @@ class InputPortDefinition(PortDefinition):
         return InputArray if self.array else InputPort
 
     @classmethod
-    def from_port(cls, port, name=None):
+    def from_port(cls, port):
         """
         Create a port definition from a port.
 
@@ -94,7 +94,7 @@ class InputPortDefinition(PortDefinition):
         -------
         ``InputPortDefinition``
         """
-        return cls(name or port._name, type=port.type, array=port.is_array(),
+        return cls(port._name, type=port.type, array=port.is_array(),
                    fixed_size=port.fixed_size if port.is_array() else None,
                    description=port.description,
                    optional=port.optional, static=port.auto_receive,
@@ -117,7 +117,7 @@ class OutputPortDefinition(PortDefinition):
         return OutputArray if self.array else OutputPort
 
     @classmethod
-    def from_port(cls, port, name=None):
+    def from_port(cls, port):
         """
         Create a port definition from a port.
 
@@ -129,7 +129,7 @@ class OutputPortDefinition(PortDefinition):
         -------
         ``OutputPortDefinition``
         """
-        return cls(name or port._name, type=port.type, array=port.is_array(),
+        return cls(port._name, type=port.type, array=port.is_array(),
                    fixed_size=port.fixed_size if port.is_array() else None,
                    description=port.description,
                    optional=port.optional)

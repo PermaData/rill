@@ -4,6 +4,7 @@ from future.utils import with_metaclass
 from past.builtins import basestring
 
 from rill.engine.component import Component, inport, outport, logger
+from rill.engine.portdef import InputPortDefinition, OutputPortDefinition
 from rill.engine.network import Network
 from rill.engine.status import StatusValues
 from rill.engine.inputport import InputPort, BaseInputCollection, InitializationConnection
@@ -12,16 +13,36 @@ from rill.engine.exceptions import FlowError
 from rill.engine.packet import Packet
 
 
+@inport("NAME", type=str)
+@inport("INDEX", type=int)
 class ExportComponent(Component):
     """
     Component that exports to a parent network
     """
     hidden = True
-    subnet = None  # Parent subnet component
+
+    # @property
+    # def subnet(self):
+    #     """
+    #
+    #     Returns
+    #     -------
+    #     ``rill.engine.subnet.SubNet``
+    #     """
+    #     return self.parent.parent
+
+    def internal_port(self):
+        pname = self.ports.NAME.receive_once()
+        if pname is None:
+            return
+
+        port = self.subnet.ports[pname]
+        index = self.ports.INDEX.receive_once()
+        if index is not None:
+            port = port[index]
+        return port
 
 
-@inport("NAME", type=str)
-@inport("INDEX", type=int)
 @outport("OUT")
 class SubIn(ExportComponent):
     """
@@ -29,17 +50,9 @@ class SubIn(ExportComponent):
     one of its internal components.
     """
     def execute(self):
-        pname = self.ports.NAME.receive_once()
-        if pname is None:
+        inport = self.internal_port()
+        if inport is None or self.ports.OUT.is_closed():
             return
-
-        if self.ports.OUT.is_closed():
-            return
-
-        inport = self.subnet.ports[pname]
-        index = self.ports.INDEX.receive_once()
-        if index is not None:
-            inport = inport[index]
 
         self.logger.debug("Accessing input port: {}".format(inport))
 
@@ -66,20 +79,12 @@ class SubIn(ExportComponent):
         inport.component = old_receiver
 
 
-@inport("NAME", type=str)
-@inport("INDEX", type=int)
 @outport("OUT")
 class SubInSS(ExportComponent):
     def execute(self):
-        pname = self.ports.NAME.receive_once()
-
-        if self.ports.OUT.is_closed():
+        inport = self.internal_port()
+        if inport is None or self.ports.OUT.is_closed():
             return
-
-        inport = self.subnet.ports[pname]
-        index = self.ports.INDEX.receive_once()
-        if index is not None:
-            inport = inport[index]
 
         self.logger.debug("Accessing input port: {}".format(inport))
 
@@ -116,22 +121,15 @@ class SubInSS(ExportComponent):
 
 
 @inport("IN")
-@inport("NAME", type=str)
-@inport("INDEX", type=int)
 class SubOut(ExportComponent):
     """
     Acts as a proxy between an output port on the SubNet and an output port on
     one of its internal components.
     """
     def execute(self):
-        pname = self.ports.NAME.receive_once()
-        if pname is None:
+        outport = self.internal_port()
+        if outport is None:
             return
-
-        outport = self.subnet.ports[pname]
-        index = self.ports.INDEX.receive_once()
-        if index is not None:
-            outport = outport[index]
 
         self.logger.debug("Accessing output port: {}".format(outport))
         outport.component = self
@@ -143,8 +141,6 @@ class SubOut(ExportComponent):
 
 
 @inport("IN")
-@inport("NAME", type=str)
-@inport("INDEX", type=int)
 class SubOutSS(ExportComponent):
     """
     Look after output from subnet
@@ -154,14 +150,9 @@ class SubOutSS(ExportComponent):
     """
 
     def execute(self):
-        pname = self.ports.NAME.receive_once()
-        if pname is None:
+        outport = self.internal_port()
+        if outport is None:
             return
-
-        outport = self.subnet.ports[pname]
-        index = self.ports.INDEX.receive_once()
-        if index is not None:
-            outport = outport[index]
 
         self.logger.debug("Accessing output port: {}".format(outport))
         outport.component = self
@@ -179,43 +170,54 @@ class SubOutSS(ExportComponent):
 
 
 class SubNet(with_metaclass(ABCMeta, Component)):
+    """
+    A component that defines and executes a sub-network of components
+    """
     sub_network = None
-
-    def __init__(self, name, parent, **kwargs):
+    def __init__(self, name, parent):
         Component.__init__(self, name, parent)
-        # don't do deadlock testing in subnets - you need to consider
-        # the whole net!
-        kwargs['deadlock_test_interval'] = None
-
-        if not self.sub_network:
-            self.sub_network = Network(**kwargs)
+        if self.sub_network is None:
+            self.sub_network = Network()
 
     @abstractmethod
     def define(self, net):
+        """
+        Define the network that will be executed by this SubNet.
+
+        Parameters
+        ----------
+        net : ``rill.engine.Network``
+            an empty network to setup
+        """
         raise NotImplementedError
 
     def _init(self):
         super(SubNet, self)._init()
         self.define(self.sub_network)
+        # we set these after define because we're paranoid:
+        # don't do deadlock testing in subnets - you need to consider
+        # the whole net!
+        self.sub_network.deadlock_test_interval = None
+        self.sub_network.parent = self.parent
+        self.sub_network.name = self._name
 
         for (name, internal_port) in self.sub_network.inports.items():
-            self.export(internal_port, name, True)
+            self._export(internal_port, name, create=True)
 
         for (name, internal_port) in self.sub_network.outports.items():
-            self.export(internal_port, name, True)
+            self._export(internal_port, name, create=True)
 
-    def export(self, internal_port, external_port, create=False):
+    def _export(self, internal_port, external_port_name, create=False):
         """
         Expose a port.
 
         Parameters
         ----------
-        external_port : ``rill.engine.outputport.OutputPort`` or
-                        ``rill.engine.inputport.InputPort`` or str
-            external SubNet port
         internal_port : ``rill.engine.outputport.OutputPort`` or
-                        ``rill.engine.inputport.InputPort`` or str
+                        ``rill.engine.inputport.InputPort``
             internal port
+        external_port_name : str
+            name of external SubNet port to create
         """
         # using a component to proxy each exported port has a few side effects:
         # - additional logging output for the extra components
@@ -230,30 +232,36 @@ class SubNet(with_metaclass(ABCMeta, Component)):
         # if you try to do that you'll end up exporting the first element
         if create:
             # create a new port on the SubNet based on the exported port
-            def_cls = inport if internal_port.kind == 'in' else outport
-            external_port_name = external_port
+            def_cls = InputPortDefinition if internal_port.kind == 'in' \
+                else OutputPortDefinition
             assert isinstance(external_port_name, basestring)
-            portdef = def_cls.from_port(internal_port, external_port_name)
+            portdef = def_cls.from_port(internal_port)
+            portdef.args['name'] = external_port_name
             external_port = portdef.create_port(self)
             self.ports[external_port_name] = external_port
         else:
-            external_port = self.port(external_port, kind=internal_port.kind)
+            external_port = self.port(external_port_name,
+                                      kind=internal_port.kind)
+
         if external_port.is_array():
             external_port = external_port.get_element(create=True)
 
         if isinstance(external_port, InputPort):
-            subcomp = self.sub_network.add_component('_' + external_port.name, SubIn,
-                                         NAME=external_port._name)
+            subcomp = self.sub_network.add_component(
+                '_' + external_port.name, SubIn, NAME=external_port._name)
             if external_port.index is not None:
                 self.initialize(external_port.index, subcomp.ports.INDEX)
             self.sub_network.connect(subcomp.ports.OUT, internal_port)
         elif isinstance(external_port, OutputPort):
-            subcomp = self.sub_network.add_component('_' + external_port.name, SubOut,
-                                         NAME=external_port._name)
+            subcomp = self.sub_network.add_component(
+                '_' + external_port.name, SubOut, NAME=external_port._name)
             if external_port.index is not None:
                 self.initialize(external_port.index, subcomp.ports.INDEX)
             self.sub_network.connect(internal_port, subcomp.ports.IN)
-
+        else:
+            raise TypeError()
+        # FIXME: this is ugly, but will have to do until we revisit the overall
+        # structure of subnets
         subcomp.subnet = self
 
     def execute(self):
@@ -313,6 +321,7 @@ class SubNet(with_metaclass(ABCMeta, Component)):
 @outport("OUT")
 class SubOI(Component):
     """Look after (synchronous) output/input from/to subnet.
+
     This component sends a single packet out to the (external) output port,
     and then immediately does a receive from the corresponding (external) input
     port. This process repeats until a None is received on the input port.
