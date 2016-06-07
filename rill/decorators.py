@@ -44,7 +44,7 @@ ANNOTATIONS = (
 )
 
 
-def component(name=None, **kwargs):
+def component(name_or_func=None, **kwargs):
     """
     Decorator to create a component from a function.
     """
@@ -60,25 +60,26 @@ def component(name=None, **kwargs):
             '__module__': func.__module__,
         }
         cls = type(name_, (_FunctionComponent,), attrs)
-        # transfer annotations
+        # transfer annotations from func to cls
         for ann in ANNOTATIONS:
             val = ann.pop(func)
             if val is not None:
                 ann.set(cls, val)
         return cls
 
-    if callable(name):
+    if callable(name_or_func):
         # @component
-        f = name
+        f = name_or_func
         name = None
         return decorator(f)
     else:
-        # @component()
-        assert name is None or isinstance(name, basestring)
+        # @component('name')
+        assert name_or_func is None or isinstance(name_or_func, basestring)
+        name = name_or_func
         return decorator
 
 
-def subnet(name):
+def subnet(name_or_func):
     """
     Decorator for creating subnet
 
@@ -87,7 +88,7 @@ def subnet(name):
 
     Parameters
     ----------
-    name : str, optional
+    name_or_func : str, optional
 
     Returns
     -------
@@ -96,22 +97,32 @@ def subnet(name):
     from rill.engine.subnet import SubNet
 
     def decorator(func):
+        def define(self, net):
+            func(net)
 
-        class _SubNet(SubNet):
-            name_ = name or func.__name__
-            def define(self, net):
-                func(net)
+        name_ = name or func.__name__
+        attrs = {
+            'name': name_,
+            'define': define,
+            '__doc__': getattr(func, '__doc__', None),
+            '__module__': func.__module__,
+        }
+        cls = type(name_, (SubNet,), attrs)
+        # transfer annotations from func to cls
+        # FIXME: not sure if all of the annotations make sense for subnets...
+        for ann in ANNOTATIONS:
+            val = ann.pop(func)
+            if val is not None:
+                ann.set(cls, val)
+        return cls
 
-        return _SubNet
-
-    if callable(name):
-        # @component
-        f = name
+    if callable(name_or_func):
+        # @subnet
+        f = name_or_func
         name = None
         return decorator(f)
-
     else:
-        # @component()
-        assert name is None or isinstance(name, basestring)
+        # @subnet('name')
+        assert name_or_func is None or isinstance(name_or_func, basestring)
+        name = name_or_func
         return decorator
-
