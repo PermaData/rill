@@ -280,7 +280,7 @@ class Network(object):
 
     def uninitialize(self, receiver):
         """
-        Initialize an inport port with a value
+        Remove the initialized value of an inport port.
 
         Parameters
         ----------
@@ -571,7 +571,7 @@ class Network(object):
 
         Returns
         -------
-        dict of str, ``rill.enginge.component.Component`
+        dict[str, ``rill.enginge.component.Component``]
         """
         return self._components
 
@@ -693,7 +693,7 @@ class Network(object):
     @classmethod
     def from_dict(cls, definition, components):
         """
-        Create network from dictionary definition
+        Create network from serialized definition
 
         Parameters
         ----------

@@ -94,7 +94,7 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         Returns
         -------
-        list of ``rill.engine.network.Network``
+        list[``rill.engine.network.Network``]
         """
         parent = self.parent
         parents = []
@@ -110,7 +110,7 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         Returns
         -------
-        list of ``Component``
+        list[``Component``]
         """
         return []
 
@@ -165,6 +165,9 @@ class Component(with_metaclass(ABCMeta, object)):
         }
 
     def init(self):
+        """
+        Override to perform custom initialization.
+        """
         pass
 
     @abstractmethod
@@ -205,10 +208,13 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         Get a port on the component.
 
+        Handles names with array indices (e.g. 'IN[0]')
+
         Parameters
         ----------
         port_name : str
         kind : {'in', 'out'} or None
+            assert that the retrieved port is of the given type
 
         Returns
         -------
@@ -233,7 +239,7 @@ class Component(with_metaclass(ABCMeta, object)):
             raise FlowError(str(err))
 
         if kind is not None and port.kind != kind:
-            raise FlowError("Expected {}port: got {}".format(kind, type(port)))
+            raise FlowError("Expected {} port: got {}".format(kind, type(port)))
 
         if index is not None:
             if not port.is_array():
@@ -375,7 +381,7 @@ class Component(with_metaclass(ABCMeta, object)):
 
         if p.owner is not self:
             self.error("Packet not owned (directly or indirectly) "
-                              "by current component")
+                       "by current component")
 
         chain = packet.chains.get(name)
         if chain is None:
@@ -459,6 +465,10 @@ class Component(with_metaclass(ABCMeta, object)):
     def get_type(cls):
         """
         Get component type for serialization
+
+        Returns
+        -------
+        str
         """
         return '{0}/{1}'.format(cls.__module__,
                                 cls.__name__)

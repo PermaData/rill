@@ -222,8 +222,8 @@ class PortContainerMixin(with_metaclass(ABCMeta, object)):
 
         Returns
         -------
-        list of ``rill.engine.inputport.InputPort`` or
-        list of ``rill.engine.outputport.OutputPort``
+        list[``rill.engine.inputport.InputPort``] or
+        list[``rill.engine.outputport.OutputPort``]
         """
         return list(self.iter_ports())
 
