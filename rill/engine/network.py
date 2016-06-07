@@ -760,7 +760,7 @@ def apply_network(network, inputs, outports=None):
     ----------
     network : ``rill.engine.network.Network``
     inputs : dict[str, Any]
-        map port names to iips
+        map of inport names to initial content
     outports : list[str], optional
         list of outports whose results should be collected
 
@@ -771,33 +771,24 @@ def apply_network(network, inputs, outports=None):
     """
     from rill.engine.subnet import make_subnet
     from rill.components.basic import Capture
-    from rill.decorators import inport, outport
 
     if not outports:
         # FIXME: I believe this should default to *unconnected* output ports
         outports = network.outports.keys()
 
-    ApplyNet = make_subnet('ApplyNet', network)
-
-    # FIXME: shouldn't this happen automatically via exported ports on the Network?
-    for port_name in outports:
-        outport(port_name)(ApplyNet)
-
-    for port_name in network.inports.keys():
-        inport(port_name)(ApplyNet)
-
     wrapper = Network()
-    apply = wrapper.add_component('ApplyNet', ApplyNet)
+    apply = wrapper.add_component('ApplyNet',
+                                  make_subnet('ApplyNet', network))
 
     for (port_name, content) in inputs.items():
         wrapper.initialize(content, apply.port(port_name))
 
     captures = {}
-    for outport_name in outports:
-        capture_name = 'Capture_{}'.format(outport_name)
+    for port_name in outports:
+        capture_name = 'Capture_{}'.format(port_name)
         capture = wrapper.add_component(capture_name, Capture)
-        wrapper.connect(apply.port(outport_name), capture.port('IN'))
-        captures[outport_name] = capture
+        wrapper.connect(apply.port(port_name), capture.port('IN'))
+        captures[port_name] = capture
 
     wrapper.go()
 
