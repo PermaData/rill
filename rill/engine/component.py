@@ -8,7 +8,8 @@ from future.utils import with_metaclass
 from rill.engine.port import PortCollection, flatten_arrays, is_null_port
 from rill.engine.packet import Packet, Chain
 from rill.engine.exceptions import FlowError, ComponentException
-from rill.engine.utils import LogFormatter, cache
+from rill.engine.utils import LogFormatter
+from rill.utils import cache
 from rill.decorators import inport, outport
 
 
