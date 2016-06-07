@@ -12,6 +12,7 @@ from rill.engine.component import Component
 from rill.decorators import inport, outport, component, subnet
 
 from tests.components import *
+from tests.subnets import PassthruNet
 
 from rill.components.basic import Counter, Sort, Inject, Repeat, Cap, Kick
 from rill.components.filters import First
@@ -149,6 +150,24 @@ def test_static_type_validation():
 
     with pytest.raises(FlowError):
         net.add_component("Repeat", Repeat, COUNT='foo')
+
+
+def test_component_with_inheritance():
+    @inport('IN')
+    @outport('OUT')
+    class A(Component):
+        def execute(self, IN, OPT, OUT):
+            pass
+
+    @inport('OPT', type=int)
+    class B(A):
+        pass
+
+    # assert [x.args['name'] for x in B.inport_definitions] == ['IN', 'OPT']
+
+    net = Network()
+    b = net.add_component('b', B)
+    assert names(b.inports) == ['IN', 'OPT']
 
 
 @pytest.mark.xfail(is_patched, reason='order is ACB instead of ABC')
@@ -649,7 +668,7 @@ serialized_network_fixture = {
             'component': 'tests.components/Discard'
         },
         'Pass': {
-            'component': 'tests.components/PassthruNet'
+            'component': 'tests.subnets/PassthruNet'
         },
         'Generate': {
             'component': 'tests.components/GenerateArray'
@@ -719,6 +738,7 @@ serialized_network_fixture['connections'] = sorted(
     key=str
 )
 
+
 def test_network_serialization():
     net = Network()
 
@@ -745,6 +765,7 @@ def test_network_serialization():
 
     assert definition == expected
 
+
 def test_network_deserialization():
     definition = serialized_network_fixture
 
@@ -752,7 +773,7 @@ def test_network_deserialization():
         'rill.components.basic/Counter': Counter,
         'rill.components.merge/Group': Group,
         'tests.components/Discard': Discard,
-        'tests.components/PassthruNet': PassthruNet,
+        'tests.subnets/PassthruNet': PassthruNet,
         'tests.components/GenerateArray': GenerateArray
     })
 
@@ -869,6 +890,7 @@ def test_export_serialization():
     expected['connections'] = sorted(expected['connections'], key=str)
 
     assert definition == expected
+
 
 def test_export_of_exports():
     definition = {

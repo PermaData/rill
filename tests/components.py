@@ -155,16 +155,6 @@ def GenSS(COUNT, OUT):
                 OUT.send(Packet.Type.OPEN)
     OUT.send(Packet.Type.CLOSE)
 
-
-@outport("OUT")
-@inport("IN")
-class PassthruNet(SubNet):
-    def define(self, network):
-        network.add_component("Pass", Passthru)
-        network.export("Pass.OUT", "OUT")
-        network.export("Pass.IN", "IN")
-
-
 # for fbp-test
 
 @component

@@ -15,11 +15,11 @@ def submit():
     @inport("IN")
     @outport("OUT")
     class MayaExport(SubNet):
-        def define(self):
+        def define(self, net):
             p = Passthru("Pass")
-            self.export(p.OUT, "OUT")
-            self.export(p.IN, "IN")
-            self.export(p.WHATEVER, "WHATEVER", create=True)
+            net.export(p.OUT, "OUT")
+            net.export(p.IN, "IN")
+            net.export(p.WHATEVER, "WHATEVER", create=True)
 
     @subnet
     @inport("IN")
@@ -36,11 +36,20 @@ def submit():
 
 @outport("OUT")
 @inport("IN")
-class PassthruNetSS(SubNet):
-    def define(self):
-        self.add_component("SUBIN", SubInSS, NAME='IN')
-        self.add_component("SUBOUT", SubOutSS, NAME='OUT')
-        self.add_component("Pass", Passthru)
+class PassthruNet(SubNet):
+    def define(self, net):
+        net.add_component("Pass", Passthru)
+        net.export("Pass.OUT", "OUT")
+        net.export("Pass.IN", "IN")
 
-        self.connect("SUBIN.OUT", "Pass.IN")
-        self.connect("Pass.OUT", "SUBOUT.IN")
+
+# @outport("OUT")
+# @inport("IN")
+# class PassthruNetSS(SubNet):
+#     def define(self, net):
+#         net.add_component("SUBIN", SubInSS, NAME='IN')
+#         net.add_component("SUBOUT", SubOutSS, NAME='OUT')
+#         net.add_component("Pass", Passthru)
+#
+#         net.connect("SUBIN.OUT", "Pass.IN")
+#         net.connect("Pass.OUT", "SUBOUT.IN")

@@ -1,6 +1,8 @@
 from weakref import WeakSet
 import inspect
 
+from kids.cache import cache
+
 
 class NOT_SET(object):
     pass

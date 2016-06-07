@@ -8,6 +8,7 @@ from rill.engine.runner import ComponentRunner
 from rill.components.basic import Capture
 from rill.components.timing import SlowPass
 from tests.components import *
+from tests.subnets import PassthruNet
 from tests.test_components import net, discard
 
 import logging
@@ -52,7 +53,7 @@ def test_subnet_with_substreams(net, discard):
 
 def test_subnet_decorator():
     @outport("OUT")
-    @inport("IN")
+    @inport("IN", description='an input')
     @subnet
     def DecoratedPassNet(sub):
         sub.add_component('Head', SlowPass, DELAY=0.01)
@@ -62,6 +63,9 @@ def test_subnet_decorator():
 
         sub.export('Head.IN', 'IN')
         sub.export('Tail.OUT', 'OUT')
+
+    assert issubclass(DecoratedPassNet, SubNet)
+    assert DecoratedPassNet.inport_definitions[0].args['description'] == 'an input'
 
     net = Network()
 
@@ -77,6 +81,13 @@ def test_subnet_decorator():
     assert dis.values == [
         '', '000005', '000004', '000003', '000002', '000001', '',
     ]
+
+
+def test_name():
+    net = Network()
+    passnet = net.add_component("Subnet", PassthruNet)
+    child = passnet.sub_network.component("Pass")
+    assert child.get_full_name() == 'Subnet.Pass'
 
 
 def test_initialize_subnet():

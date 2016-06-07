@@ -28,13 +28,15 @@ class Network(object):
 
     Attributes
     ----------
-    _components : dict of (str, ``rill.engine.runner.ComponentRunner``
+    _components : dict[str, ``rill.engine.runner.ComponentRunner``]
     """
 
-    def __init__(self, default_capacity=10, deadlock_test_interval=1):
-        # FIXME: what should the name be?
-        # super(Network, self).__init__(self.__class__.__name__, None)
+    def __init__(self, default_capacity=10, deadlock_test_interval=1,
+                 name=None):
         # self.logger = logger
+        self.name = name
+        # parent Network: set by SubNet
+        self.parent = None
         self.default_capacity = default_capacity
         self.deadlock_test_interval = deadlock_test_interval
 
@@ -42,6 +44,7 @@ class Network(object):
 
         self._components = OrderedDict()
 
+        # exported inports and outports
         self.inports = OrderedDict()
         self.outports = OrderedDict()
 
@@ -496,7 +499,7 @@ class Network(object):
         for runner in self.runners.values():
             if isinstance(runner, SubNet):
                 # consider components of subnets
-                if not runner.list_comp_status(msgs):
+                if not runner.sub_network.list_comp_status(msgs):
                     return False
             else:
                 status = runner.status
@@ -579,11 +582,11 @@ class Network(object):
 
         Returns
         -------
-        ``rill.enginge.component.Component`
+        ``rill.enginge.component.Component``
         """
         return self._components.get(name)
 
-    # FIXME: make private
+    # FIXME: remove this and run/move Component._init to __init__
     def put_component(self, name, comp):
         """
         Adds a component and inits it.
@@ -591,32 +594,12 @@ class Network(object):
         Parameters
         ----------
         name : str
-        comp : ``rill.enginge.component.Component`
-
-        Returns
-        -------
-        comp : ``rill.enginge.component.Component` or None
-            previous component, if set
+        comp : ``rill.enginge.component.Component``
         """
-        from rill.engine.subnet import SubNet
-
-        old_component = self._components.get(name)
-
-        # FIXME: this can be found by the component by calling get_parents(). it doesn't need to be assigned here
-        # find the root Network and assign it to comp.network
-        network = self
-        while True:
-            if not isinstance(network, SubNet):
-                break
-            network = network.parent
-        comp.network = network
-
+        # initialize the component's ports so they can be used for network
+        # building
         comp._init()
-
         self._components[name] = comp
-
-        if old_component is not None:
-            return old_component
 
     def export(self, internal_port, external_port_name):
         """

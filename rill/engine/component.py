@@ -8,7 +8,7 @@ from future.utils import with_metaclass
 from rill.engine.port import PortCollection, flatten_arrays, is_null_port
 from rill.engine.packet import Packet, Chain
 from rill.engine.exceptions import FlowError, ComponentException
-from rill.engine.utils import LogFormatter
+from rill.engine.utils import LogFormatter, cache
 from rill.decorators import inport, outport
 
 
@@ -37,16 +37,8 @@ class Component(with_metaclass(ABCMeta, object)):
         assert name is not None
         self._name = name
 
-        # cached values
-        self._full_name = None
-        self._parents = None
-
         # the component's immediate network parent: used for subnet support
         self.parent = parent
-        # the root network
-        # FIXME: this is set by the Network, but should be set by the component using get_parents()
-        self.network = None
-
         # set by the network
         self._runner = None
 
@@ -82,32 +74,37 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         Initialize internal attributes.
         """
-        ports = []
-        ports.extend(inport.get_inherited(self.__class__))
-        ports.extend(outport.get_inherited(self.__class__))
         self.ports = PortCollection(
-            self, [p.create_port(self) for p in ports])
+            self, [p.create_port(self) for p in self.port_definitions()])
 
+    # FIXME: rename to root_network
+    @property
+    def network(self):
+        """
+        The root network.
+
+        Returns
+        -------
+        ``rill.engine.network.Network``
+        """
+        return self.get_parents()[0]
+
+    @cache
     def get_parents(self):
         """
         Returns
         -------
-        list of ``rill.engine.network.SubNet``
+        list of ``rill.engine.network.Network``
         """
-        from rill.engine.subnet import SubNet
-        if self._parents is None:
-            parent = self.parent
-            parents = []
-            while True:
-                if parent is None:
-                    break
-                if not isinstance(parent, SubNet):
-                    break
-                parents.append(parent)
-                parent = parent.parent
-            parents.reverse()
-            self._parents = parents
-        return self._parents
+        parent = self.parent
+        parents = []
+        while True:
+            if parent is None:
+                break
+            parents.append(parent)
+            parent = parent.parent
+        parents.reverse()
+        return parents
 
     def get_children(self):
         """
@@ -128,7 +125,7 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         return self._name
 
-    # FIXME: cached property
+    @cache
     def get_full_name(self):
         """
         Name of the component, including all parent components.
@@ -137,10 +134,8 @@ class Component(with_metaclass(ABCMeta, object)):
         -------
         str
         """
-        if self._full_name is None:
-            self._full_name = '.'.join(
-                [x.get_name() for x in self.get_parents()] + [self.get_name()])
-        return self._full_name
+        parts = [x.name for x in self.get_parents() if x.name is not None]
+        return '.'.join(parts + [self.get_name()])
 
     @classmethod
     def get_spec(cls):
@@ -247,6 +242,13 @@ class Component(with_metaclass(ABCMeta, object)):
             port = port.get_element(index, create=True)
 
         return port
+
+    @classmethod
+    def port_definitions(cls):
+        # FIXME: make this better.
+        # - use OrderedDict
+        # - don't use annotation classes to do the inheritance work (use super)
+        return inport.get_inherited(cls) + outport.get_inherited(cls)
 
     def error(self, msg, errtype=FlowError):
         raise errtype("{}: {}".format(self, msg))
