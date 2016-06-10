@@ -685,7 +685,7 @@ class EagerInputCollection(BaseInputCollection):
             If all ports are drained, returns None
             Otherwise, suspends until data arrives at a port array element.
         """
-        self.component.trace_funcs("Starting next_port")
+        self.receiver.trace_funcs("Starting next_port")
         while True:
             all_drained = True
             for port in self.ports():
@@ -693,27 +693,27 @@ class EagerInputCollection(BaseInputCollection):
                 #   continue
                 #
                 if not port.is_empty():
-                    self.component.trace_funcs(
+                    self.receiver.trace_funcs(
                         "Ending next_port - returned: {}".format(port))
                     return port
                 elif not port.is_drained():
                     all_drained = False
             if all_drained:
-                self.component.trace_funcs(
+                self.receiver.trace_funcs(
                     "Ending next_port - array port drained")
                 return None
             else:
-                self.component.trace_locks("gpwd - lock ")
+                self.receiver.trace_locks("gpwd - lock ")
                 try:
-                    with self.component._lock:
-                        self.component.status = StatusValues.SUSP_FIPE
-                        self.component.trace_funcs("find IPE with data")
-                        self.component.trace_locks("fipewd - await")
-                        self.component._can_go.wait()
+                    with self.receiver._lock:
+                        self.receiver.status = StatusValues.SUSP_FIPE
+                        self.receiver.trace_funcs("find IPE with data")
+                        self.receiver.trace_locks("fipewd - await")
+                        self.receiver._can_go.wait()
                 finally:
-                    self.component.trace_locks("gpwd - unlock ")
-                    self.component.status = StatusValues.ACTIVE
-                    self.component.trace_funcs("Active")
+                    self.receiver.trace_locks("gpwd - unlock ")
+                    self.receiver.status = StatusValues.ACTIVE
+                    self.receiver.trace_funcs("Active")
 
     def receive(self):
         """
