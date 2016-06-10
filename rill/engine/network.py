@@ -653,7 +653,7 @@ class Network(object):
 
             definition['processes'][comp_name] = {
                 "component": component.get_type(),
-                "metadata" : component.metadata
+                "metadata": component.metadata
             }
 
             for inport in component.inports:
@@ -661,8 +661,11 @@ class Network(object):
                     continue
 
                 if isinstance(inport._connection, InitializationConnection):
+                    content = inport._connection._content
+                    if inport.type is not None:
+                        content = inport.type.to_primitive(content)
                     definition['connections'].append({
-                        'data': inport._connection._content,
+                        'data': content,
                         'tgt': portdef(comp_name, inport)
                     })
                 else:
@@ -707,11 +710,9 @@ class Network(object):
         -------
         net : ``rill.enginge.network.Network``
         """
-        def portname(p):
-            n = '{}.{}'.format(p['process'], p['port'])
-            if 'index' in p:
-                n += '[{}]'.format(p['index'])
-            return n
+        def _port(p):
+            return net.get_component_port((p['process'], p['port']),
+                                          index=p.get('index', None))
 
         net = cls()
         for (name, spec) in definition['processes'].items():
@@ -720,19 +721,21 @@ class Network(object):
                 component.metadata.update(spec['metadata'])
 
         for connection in definition['connections']:
-            tgt = portname(connection['tgt'])
+            tgt = _port(connection['tgt'])
             if 'src' in connection:
-                src = portname(connection['src'])
+                src = _port(connection['src'])
                 net.connect(src, tgt)
             else:
-                data = connection['data']
-                net.initialize(data, tgt)
+                content = connection['data']
+                if tgt.type is not None:
+                    content = tgt.type.to_native(content)
+                net.initialize(content, tgt)
 
         for (name, inport) in definition['inports'].items():
-            net.export(portname(inport), name)
+            net.export(_port(inport), name)
 
         for (name, outport) in definition['outports'].items():
-            net.export(portname(outport), name)
+            net.export(_port(outport), name)
 
         return net
 

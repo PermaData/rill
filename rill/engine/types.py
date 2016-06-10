@@ -100,6 +100,20 @@ class TypeHandler(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def to_primitive(self, data):
+        """
+        Convert data to a value safe to serialize.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def to_native(self, data):
+        """
+        Convert primitive data to its native Python construct.
+        """
+        raise NotImplementedError
+
     @classmethod
     @abstractmethod
     def claim_type_def(cls, type_def):
@@ -107,6 +121,13 @@ class TypeHandler(with_metaclass(ABCMeta, object)):
 
 
 class BasicTypeHandler(TypeHandler):
+    """
+    Simple type handler that is used when setting a port's `type` to a basic
+    python type, such as `str`, `int`, `float`, or `bool`.
+
+    This class provides no additional functionality when serializing data:
+    the types are expected to be json-serializable.
+    """
     def get_spec(self):
         return {'type': TYPE_MAP.get(self.type_def, 'object')}
 
@@ -121,6 +142,12 @@ class BasicTypeHandler(TypeHandler):
                 "Data is type {}: expected {}. Error while casting: {}".format(
                     value.__class__.__name__, self.type_def.__name__, err))
 
+    def to_primitive(self, data):
+        return data
+
+    def to_native(self, data):
+        return data
+
     @classmethod
     def claim_type_def(cls, type_def):
         return inspect.isclass(type_def)
@@ -129,9 +156,23 @@ class BasicTypeHandler(TypeHandler):
 register(BasicTypeHandler)
 
 try:
-    import schematics.types
+    import schematics.types.base
+    import schematics.types.compound
     import schematics.models
 
+    schematics.types.base.UUIDType.primitive_type = str
+    schematics.types.base.IPv4Type.primitive_type = str
+    schematics.types.base.StringType.primitive_type = str
+    schematics.types.base.URLType.primitive_type = str
+    schematics.types.base.EmailType.primitive_type = str
+    schematics.types.base.IntType.primitive_type = int
+    schematics.types.base.FloatType.primitive_type = float
+    schematics.types.base.DecimalType.primitive_type = str
+    schematics.types.base.BooleanType.primitive_type = bool
+    schematics.types.base.DateTimeType.primitive_type = str
+    schematics.types.compound.ModelType.primitive_type = dict
+    schematics.types.compound.ListType.primitive_type = list
+    schematics.types.compound.DictType.primitive_type = dict
 
     class SchematicsTypeHandler(TypeHandler):
 
@@ -141,13 +182,24 @@ try:
             super(SchematicsTypeHandler, self).__init__(type_def)
 
         def get_spec(self):
-            raise NotImplementedError
+            # FIXME: handle case where primitive_type is not set...
+            spec = {'type': TYPE_MAP[self.type_def.primitive_type]}
+            choices = self.type_def.choices
+            if choices:
+                spec['values'] = choices
+            return spec
 
         def validate(self, value):
             try:
                 return self.type_def.to_native(value)
             except Exception as e:
                 raise PacketValidationError(str(e))
+
+        def to_primitive(self, data):
+            return self.type_def.to_primitive(data)
+
+        def to_native(self, data):
+            return self.type_def.to_native(data)
 
         @classmethod
         def claim_type_def(cls, type_def):
