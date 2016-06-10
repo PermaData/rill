@@ -755,7 +755,7 @@ class SynchronizedInputCollection(BaseInputCollection):
 
         Returns
         -------
-        tuple of ``rill.engine.packet.Packet``
+        tuple[``rill.engine.packet.Packet``, ...]
         """
         if not self.ports():
             return
@@ -795,7 +795,7 @@ class SynchronizedInputCollection(BaseInputCollection):
 
         Yields
         -------
-        tuple of object
+        tuple[Any, ...]
         """
         for group in self.iter_packets():
             yield tuple(p.drop() for p in group)

@@ -398,7 +398,7 @@ class BasePortCollection(PortContainerMixin):
         Parameters
         ----------
         component : ``rill.engine.component.Component``
-        ports : iterable of ``
+        ports : iterable[``BasePort``]
         """
         self.component = component
         self._ports = OrderedDict((p.name, p) for p in self._prep_args(ports))

@@ -74,10 +74,13 @@ class Annotation(object):
             # of cls.attribute on the object because it may already exist there
             # (i.e. as a default value which we should override).
             cls._seen = WeakSet()
-        seen = obj in cls._seen
-        if not seen:
             cls._seen.add(obj)
-        return seen
+            return False
+        else:
+            seen = obj in cls._seen
+            if not seen:
+                cls._seen.add(obj)
+            return seen
 
     @classmethod
     def attr(cls):
@@ -96,6 +99,9 @@ class Annotation(object):
 
     @classmethod
     def get_inherited(cls, obj):
+        """
+        For use with multi=True
+        """
         assert cls.multi
         result = []
         for base in reversed(inspect.getmro(obj)):
