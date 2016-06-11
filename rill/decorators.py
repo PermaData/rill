@@ -59,7 +59,9 @@ def component(name_or_func=None, **kwargs):
             '__doc__': getattr(func, '__doc__', None),
             '__module__': func.__module__,
         }
-        cls = type(name_, (_FunctionComponent,), attrs)
+        cls = type(name_,
+                   (kwargs.get('base_class', _FunctionComponent),),
+                   attrs)
         # transfer annotations from func to cls
         for ann in ANNOTATIONS:
             val = ann.pop(func)
@@ -69,6 +71,9 @@ def component(name_or_func=None, **kwargs):
 
     if callable(name_or_func):
         # @component
+        if kwargs:
+            raise ValueError("If you call @component with a callable **kwargs "
+                             "is ignored")
         f = name_or_func
         name = None
         return decorator(f)

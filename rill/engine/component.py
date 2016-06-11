@@ -486,7 +486,7 @@ class _FunctionComponent(with_metaclass(ABCMeta, Component)):
     def _execute(self, *args):
         raise NotImplementedError
 
-    def execute(self):
+    def get_args(self):
         # FIXME: use named arguments to allow user to change order? could
         # inspect the names and if they're all accounted for, use names,
         # otherwise, fall back to ordered args.
@@ -504,4 +504,7 @@ class _FunctionComponent(with_metaclass(ABCMeta, Component)):
                 args.append(port.receive_once())
             else:
                 args.append(port)
-        self._execute(*args)
+        return args
+
+    def execute(self):
+        self._execute(*self.get_args())
