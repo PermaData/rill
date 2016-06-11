@@ -10,7 +10,6 @@ _type_handlers = []
 # Mapping of native Python types to FBP protocol types
 TYPE_MAP = {
     str: 'string',
-    unicode: 'string',
     bool: 'boolean',
     int: 'int',
     float: 'number',
@@ -18,8 +17,6 @@ TYPE_MAP = {
     dict: 'object',
     list: 'array',
     tuple: 'array',
-    set: 'array',
-    frozenset: 'array',
     #color
     #date
     #function
