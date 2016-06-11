@@ -59,7 +59,10 @@ class PortDefinition(object):
             'required': (not self.args['optional']),
         }
 
-        spec.update(get_type_handler(self.args['type']).get_spec())
+        type_handler = get_type_handler(self.args['type'])
+        if type_handler:
+            spec.update(type_handler.get_spec())
+
         return spec
 
 
@@ -136,5 +139,5 @@ class OutputPortDefinition(PortDefinition):
 
     def get_spec(self):
         spec = super(OutputPortDefinition, self).get_spec()
-        spec.pop('values')
+        spec.pop('values', None)
         return spec
