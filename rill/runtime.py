@@ -128,10 +128,7 @@ class Runtime(object):
             raise ValueError('component_class must be a class that inherits '
                              'from Component')
 
-        try:
-            spec = component_class.get_spec()
-        except Exception as ex:
-            import ipdb; ipdb.set_trace()
+        spec = component_class.get_spec()
         name = spec['name']
 
         if name in self._component_types and not overwrite:
@@ -460,10 +457,7 @@ def create_websocket_application(runtime):
             print "--OUT--"
             import pprint
             pprint.pprint(message)
-            try:
-                self.ws.send(json.dumps(message))
-            except Exception as ex:
-                import ipdb; ipdb.set_trace()
+            self.ws.send(json.dumps(message))
 
         def send_error(self, protocol, message):
             data = {
