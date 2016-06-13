@@ -105,7 +105,8 @@ class InputPortDefinition(PortDefinition):
 
     def get_spec(self):
         spec = super(InputPortDefinition, self).get_spec()
-        spec['default'] = self.args['default']
+        if self.args['default'] is not NOT_SET:
+            spec['default'] = self.args['default']
         return spec
 
 

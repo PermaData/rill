@@ -95,13 +95,11 @@ class Runtime(object):
 
         return {
             # FIXME: there's a bug in fbp-protocol
-            # 'label': 'rill python runtime',
-            # 'label': 'NoFlo runtime',
+            'label': 'rill python runtime',
             'type': 'rill',
             'version': self.PROTOCOL_VERSION,
             'capabilities': capabilities,
             'allCapabilities': all_capabilities
-            #'graph': ''
         }
 
     # Components --
@@ -130,7 +128,10 @@ class Runtime(object):
             raise ValueError('component_class must be a class that inherits '
                              'from Component')
 
-        spec = component_class.get_spec()
+        try:
+            spec = component_class.get_spec()
+        except Exception as ex:
+            import ipdb; ipdb.set_trace()
         name = spec['name']
 
         if name in self._component_types and not overwrite:
@@ -459,7 +460,10 @@ def create_websocket_application(runtime):
             print "--OUT--"
             import pprint
             pprint.pprint(message)
-            self.ws.send(json.dumps(message))
+            try:
+                self.ws.send(json.dumps(message))
+            except Exception as ex:
+                import ipdb; ipdb.set_trace()
 
         def send_error(self, protocol, message):
             data = {
@@ -767,15 +771,21 @@ class FlowhubRegistry(RuntimeRegistry):
                             (response.status_code, response.text))
 
 
-def create_runtime_id(user_id, address):
-    return str(uuid.uuid3(uuid.UUID(user_id), 'rill_' + address))
+def create_runtime_id(address, user_id=None):
+    rill_id = 'rill_' + address#.replace('/', '-')
+    if user_id:
+        return "_".join(user_id, rill_id)
+    else:
+        return rill_id
 
 
 def main():
     # Argument defaults
     defaults = {
         'host': 'localhost',
-        'port': 3569
+        'port': 3569,
+        'registry-host': 'localhost',
+        'registry-port': 8080
     }
 
     # Parse arguments
@@ -783,17 +793,25 @@ def main():
         description='Runtime that responds to commands sent over the network, '
                     'managing and executing graphs.')
     argp.add_argument(
-        '-u', '--user-id', metavar='UUID',
+        '-u', '--flowhub-user-id', metavar='UUID',
         help='FlowHub user ID (get this from NoFlo-UI)')
     argp.add_argument(
-        '-r', '--runtime-id', metavar='UUID',
+        '-r', '--flowhub-runtime-id', metavar='UUID',
         help='FlowHub unique runtime ID (generated if none specified)')
     argp.add_argument(
         '--host', default=defaults['host'], metavar='HOSTNAME',
         help='Listen host for websocket (default: %(host)s)' % defaults)
     argp.add_argument(
-        '--port', type=int, default=3569, metavar='PORT',
+        '--port', type=int, default=defaults['port'], metavar='PORT',
         help='Listen port for websocket (default: %(port)d)' % defaults)
+    argp.add_argument(
+        '--registry-host', default=defaults['registry-host'],
+        metavar='HOSTNAME',
+        help='Listen host for registry (default: %(registry-host)s)' % defaults)
+    argp.add_argument(
+        '--registry-port', type=int, default=defaults['registry-port'],
+        metavar='PORT',
+        help='Listen port for registry (default: %(registry-port)d)' % defaults)
     argp.add_argument(
         '--log-file', metavar='FILE_PATH',
         help='File to send log output to (default: none)')
@@ -819,12 +837,12 @@ def main():
     #                   })
 
     address = 'ws://{}:{:d}'.format(args.host, args.port)
-    runtime_id = args.runtime_id
-    if not runtime_id and not args.user_id:
+    runtime_id = args.flowhub_runtime_id
+    if not runtime_id and not args.flowhub_user_id:
         log.warn('No runtime ID or user ID was specified: skipping '
                  'registration with flowhub.')
-    elif not runtime_id and args.user_id:
-        runtime_id = create_runtime_id(args.user_id, address)
+    elif not runtime_id and args.flowhub_user_id:
+        runtime_id = create_runtime_id(address, args.flowhub_user_id)
         log.warn('No runtime ID was specified, so one was '
                  'generated: {}'.format(runtime_id))
 
@@ -849,7 +867,7 @@ def main():
         s = geventwebsocket.WebSocketServer(('', args.port), r)
         s.serve_forever()
 
-    def registration_task():
+    def flowhub_registration_task():
         """
         This greenlet will register the runtime with FlowHub and occasionally
         ping the endpoint to keep the runtime alive.
@@ -857,7 +875,8 @@ def main():
         flowhub = FlowhubRegistry()
 
         # Register runtime
-        flowhub.register_runtime(runtime, runtime_id, args.user_id, address)
+        flowhub.register_runtime(
+            runtime, runtime_id, args.flowhub_user_id, address)
 
         # Ping
         delay_secs = 60  # Ping every minute
@@ -865,9 +884,21 @@ def main():
             flowhub.ping_runtime(runtime_id)
             gevent.sleep(delay_secs)
 
+
+    def local_registration_task():
+        """
+        This greenlet will run the rill registry to register the runtime with
+        the ui.
+        """
+        from rill.registry import create_routes, run_registry
+        create_routes(args.host, args.port)
+        run_registry(args.registry_host, args.registry_port)
+
     tasks = [runtime_application_task]
     if runtime_id:
-        tasks.append(registration_task)
+        tasks.append(flowhub_registration_task)
+    else:
+        tasks.append(local_registration_task)
 
     # Start!
     gevent.wait([gevent.spawn(t) for t in tasks])
