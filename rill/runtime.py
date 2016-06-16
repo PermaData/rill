@@ -199,7 +199,7 @@ class Runtime(object):
             self.new_graph(graph_id)
         started = graph_id in self._executors
         running = started and not self._executors[graph_id].ready()
-        print "get_status.  started {}, running {}".format(started, running)
+        print("get_status.  started {}, running {}".format(started, running))
         return started, running
 
     def start(self, graph_id, done_callback):
