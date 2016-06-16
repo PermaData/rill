@@ -500,7 +500,7 @@ def create_websocket_application(runtime):
                 'network': self.handle_network
             }
             import pprint
-            print "--IN--"
+            print("--IN--")
             pprint.pprint(m)
 
             try:
@@ -532,7 +532,7 @@ def create_websocket_application(runtime):
             message = {'protocol': protocol,
                        'command': command,
                        'payload': payload}
-            print "--OUT--"
+            print("--OUT--")
             import pprint
             pprint.pprint(message)
             self.ws.send(json.dumps(message))
