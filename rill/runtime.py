@@ -89,6 +89,9 @@ class Runtime(object):
             # "flash" a running graph setup into itself, making it persistent
             # across reboots
             'network:persist',
+
+            # build graph on ui using graph protocol messages
+            'graph:getgraph'
         ]
 
         all_capabilities = capabilities
@@ -371,6 +374,81 @@ class Runtime(object):
             # message is when noflo initializes the inport to [] (see initialize_port as well)
             return graph.uninitialize(target_port)._content
 
+    def get_graph_messages(self, graph_id):
+        """
+        Create graph protocol messages to build graph for receiver
+
+        Params
+        ------
+        graph_id : str
+            id of graph to serialize
+
+        Return
+        ------
+        messages : list
+            list of graph protocol messages that reproduce graph
+
+        """
+        net = self._get_graph(graph_id)
+        definition = net.to_dict()
+        messages = [('clear', {
+            'id': graph_id,
+            'name': net.name
+        })]
+        for node_id, node in definition['processes'].items():
+            messages.append(('addnode', {
+                'graph': graph_id,
+                'id': node_id,
+                'component': node['component'],
+                'metadata': node['metadata']
+            }))
+        for edge in definition['connections']:
+            payload = {
+                'graph': graph_id,
+                'tgt': {
+                    'node': edge['tgt']['process'],
+                    'port': edge['tgt']['port']
+                }
+            }
+
+            tgt_index = edge['tgt'].get('index', None)
+            if tgt_index:
+                payload['tgt']['index'] = tgt_index
+
+            src = edge.get('src', None)
+            if src:
+                command = 'addedge'
+                payload['src'] = {
+                    'node': src['process'],
+                    'port': src['port']
+                }
+                src_index = src.get('index', None)
+                if src_index:
+                    payload['src']['index'] = src_index
+            else:
+                command = 'addinitial'
+                payload['data'] = edge['data']
+
+            messages.append((command, payload))
+
+        for public_port, inner_port in definition['inports'].items():
+            messages.append(('addinport', {
+                'graph': graph_id,
+                'public': public_port,
+                'node': inner_port['process'],
+                'port': inner_port['port']
+            }))
+
+        for public_port, inner_port in definition['outports'].items():
+            messages.append(('addoutport', {
+                'graph': graph_id,
+                'public': public_port,
+                'node': inner_port['process'],
+                'port': inner_port['port']
+            }))
+
+        return messages
+
 
 def create_websocket_application(runtime):
     class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
@@ -615,6 +693,11 @@ def create_websocket_application(runtime):
                                                           payload['id'],
                                                           payload['metadata'])
                 payload['metadata'] = metadata
+            elif command == 'getgraph':
+                send_ack = False
+                graph_messages = self.runtime.get_graph_messages(payload['id'])
+                for command, payload in graph_messages:
+                    self.send('graph', command, payload)
             else:
                 self.log.warn("Unknown command '%s' for protocol '%s'" %
                               (command, 'graph'))
