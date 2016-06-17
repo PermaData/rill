@@ -4,6 +4,7 @@ Server to register rill with ui
 
 from bottle import route, request, response, run
 from urlparse import urlparse
+from datetime import datetime
 import json
 
 def create_routes(host, port):
@@ -37,6 +38,7 @@ def create_routes(host, port):
         runtime_meta['protocol'] = 'websocket'
         runtime_meta['id'] = create_runtime_id(
             urlparse(address).netloc)
+        runtime_meta['seen'] = str(datetime.now())
         return json.dumps([runtime_meta])
 
 def run_registry(host, port, **kwargs):
