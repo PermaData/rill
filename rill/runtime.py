@@ -698,6 +698,15 @@ def create_websocket_application(runtime):
                 graph_messages = self.runtime.get_graph_messages(payload['id'])
                 for command, payload in graph_messages:
                     self.send('graph', command, payload)
+            elif command == 'list':
+                send_ack = False
+                for graph_id in self.runtime._graphs.keys():
+                    self.send('graph', 'graph', {
+                        'id': graph_id
+                    })
+
+                self.send('graph', 'graphsdone', None)
+
             else:
                 self.log.warn("Unknown command '%s' for protocol '%s'" %
                               (command, 'graph'))
