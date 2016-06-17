@@ -1,6 +1,9 @@
 from abc import ABCMeta, abstractmethod
 import inspect
 
+import schematics.types
+import schematics.models
+
 from future.utils import with_metaclass
 
 from rill.engine.exceptions import TypeHandlerException, PacketValidationError
@@ -152,61 +155,55 @@ class BasicTypeHandler(TypeHandler):
 
 register(BasicTypeHandler)
 
-try:
-    import schematics.types.base
-    import schematics.types.compound
-    import schematics.models
 
-    schematics.types.base.UUIDType.primitive_type = str
-    schematics.types.base.IPv4Type.primitive_type = str
-    schematics.types.base.StringType.primitive_type = str
-    schematics.types.base.URLType.primitive_type = str
-    schematics.types.base.EmailType.primitive_type = str
-    schematics.types.base.IntType.primitive_type = int
-    schematics.types.base.FloatType.primitive_type = float
-    schematics.types.base.DecimalType.primitive_type = str
-    schematics.types.base.BooleanType.primitive_type = bool
-    schematics.types.base.DateTimeType.primitive_type = str
-    schematics.types.compound.ModelType.primitive_type = dict
-    schematics.types.compound.ListType.primitive_type = list
-    schematics.types.compound.DictType.primitive_type = dict
-
-    class SchematicsTypeHandler(TypeHandler):
-
-        def __init__(self, type_def):
-            if inspect.isclass(type_def):
-                type_def = type_def()
-            super(SchematicsTypeHandler, self).__init__(type_def)
-
-        def get_spec(self):
-            # FIXME: handle case where primitive_type is not set...
-            spec = {'type': TYPE_MAP[self.type_def.primitive_type]}
-            choices = self.type_def.choices
-            if choices:
-                spec['values'] = choices
-            return spec
-
-        def validate(self, value):
-            try:
-                return self.type_def.to_native(value)
-            except Exception as e:
-                raise PacketValidationError(str(e))
-
-        def to_primitive(self, data):
-            return self.type_def.to_primitive(data)
-
-        def to_native(self, data):
-            return self.type_def.to_native(data)
-
-        @classmethod
-        def claim_type_def(cls, type_def):
-            bases = (schematics.types.BaseType, schematics.models.Model)
-            return (isinstance(type_def, bases) or
-                    (inspect.isclass(type_def) and
-                     issubclass(type_def, bases)))
+schematics.types.UUIDType.primitive_type = str
+schematics.types.IPv4Type.primitive_type = str
+schematics.types.StringType.primitive_type = str
+schematics.types.URLType.primitive_type = str
+schematics.types.EmailType.primitive_type = str
+schematics.types.IntType.primitive_type = int
+schematics.types.FloatType.primitive_type = float
+schematics.types.DecimalType.primitive_type = str
+schematics.types.BooleanType.primitive_type = bool
+schematics.types.DateTimeType.primitive_type = str
+schematics.types.ModelType.primitive_type = dict
+schematics.types.ListType.primitive_type = list
+schematics.types.DictType.primitive_type = dict
 
 
-    register(SchematicsTypeHandler)
+class SchematicsTypeHandler(TypeHandler):
 
-except ImportError:
-    pass
+    def __init__(self, type_def):
+        if inspect.isclass(type_def):
+            type_def = type_def()
+        super(SchematicsTypeHandler, self).__init__(type_def)
+
+    def get_spec(self):
+        # FIXME: warn if primitive_type is not set?
+        spec = {'type': TYPE_MAP.get(self.type_def.primitive_type, str)}
+        choices = self.type_def.choices
+        if choices:
+            spec['values'] = choices
+        return spec
+
+    def validate(self, value):
+        try:
+            return self.type_def.to_native(value)
+        except Exception as e:
+            raise PacketValidationError(str(e))
+
+    def to_primitive(self, data):
+        return self.type_def.to_primitive(data)
+
+    def to_native(self, data):
+        return self.type_def.to_native(data)
+
+    @classmethod
+    def claim_type_def(cls, type_def):
+        bases = (schematics.types.BaseType, schematics.models.Model)
+        return (isinstance(type_def, bases) or
+                (inspect.isclass(type_def) and
+                 issubclass(type_def, bases)))
+
+
+register(SchematicsTypeHandler)
