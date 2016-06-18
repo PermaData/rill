@@ -4,3 +4,4 @@ termcolor
 future
 kids.cache
 schematics==2.0.0a1
+bottle
