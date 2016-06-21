@@ -7,7 +7,7 @@ from termcolor import colored
 
 from rill.engine.utils import LogFormatter
 from rill.engine.status import StatusValues
-from rill.engine.exceptions import FlowError, ComponentException
+from rill.engine.exceptions import FlowError, ComponentError
 
 
 class ComponentRunner(Greenlet):
@@ -325,7 +325,7 @@ class ComponentRunner(Greenlet):
                 self.error("Compodenent terminated with stack not empty")
             self.component.parent.indicate_terminated(self)
 
-        except ComponentException as e:
+        except ComponentError as e:
             # FIXME:
             if e.get_value() > 0:
                 self.trace_funcs("Component exception: " + e.get_value())

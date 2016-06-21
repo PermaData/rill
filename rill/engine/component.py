@@ -7,7 +7,7 @@ from future.utils import with_metaclass
 
 from rill.engine.port import PortCollection, flatten_arrays, is_null_port
 from rill.engine.packet import Packet, Chain
-from rill.engine.exceptions import FlowError, ComponentException
+from rill.engine.exceptions import FlowError, ComponentError
 from rill.engine.utils import LogFormatter
 from rill.utils import cache
 from rill.decorators import inport, outport
@@ -264,11 +264,11 @@ class Component(with_metaclass(ABCMeta, object)):
 
     def validate_packet(self, packet):
         if not isinstance(packet, Packet):
-            raise ComponentException(
+            raise ComponentError(
                 "Expected a Packet instance, got {}".format(type(packet)))
 
         if self is not packet.owner:
-            raise ComponentException(
+            raise ComponentError(
                 "Packet not owned by current component, "
                 "or component has terminated (owner is %s)" % packet.owner)
 

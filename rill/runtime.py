@@ -26,7 +26,7 @@ from rill.engine.exceptions import FlowError
 logger = logging.getLogger(__name__)
 
 
-class RuntimeError(FlowError):
+class RillRuntimeError(FlowError):
     pass
 
 

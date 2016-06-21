@@ -6,7 +6,7 @@ import schematics.models
 
 from future.utils import with_metaclass
 
-from rill.engine.exceptions import TypeHandlerException, PacketValidationError
+from rill.engine.exceptions import TypeHandlerError, PacketValidationError
 
 _type_handlers = []
 
@@ -75,7 +75,7 @@ class TypeHandler(with_metaclass(ABCMeta, object)):
 
         Raises
         ------
-        ``rill.exceptions.TypeHandlerException``
+        ``rill.exceptions.TypeHandlerError``
         """
         raise NotImplementedError
 

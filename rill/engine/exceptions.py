@@ -8,13 +8,13 @@ class NetworkDeadlock(FlowError):
         self.errors = statuses
 
 
-class ComponentException(FlowError):
+class ComponentError(FlowError):
     pass
 
 
-class TypeHandlerException(FlowError):
+class TypeHandlerError(FlowError):
     pass
 
 
-class PacketValidationError(TypeHandlerException):
+class PacketValidationError(TypeHandlerError):
     pass
