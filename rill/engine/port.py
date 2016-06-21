@@ -78,7 +78,7 @@ class BasePort(with_metaclass(ABCMeta, object)):
         assert not isinstance(component, str)
         self.component = component
         self._name = name
-        self.type = get_type_handler(type) if type is not None else None
+        self.type = get_type_handler(type)
         self.index = index
         self.required = required
         self.description = description

@@ -662,8 +662,7 @@ class Network(object):
 
                 if isinstance(inport._connection, InitializationConnection):
                     content = inport._connection._content
-                    if inport.type is not None:
-                        content = inport.type.to_primitive(content)
+                    content = inport.type.to_primitive(content)
                     definition['connections'].append({
                         'data': content,
                         'tgt': portdef(comp_name, inport)
@@ -727,8 +726,7 @@ class Network(object):
                 net.connect(src, tgt)
             else:
                 content = connection['data']
-                if tgt.type is not None:
-                    content = tgt.type.to_native(content)
+                content = tgt.type.to_native(content)
                 net.initialize(content, tgt)
 
         for (name, inport) in definition['inports'].items():

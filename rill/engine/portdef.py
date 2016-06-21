@@ -60,8 +60,7 @@ class PortDefinition(object):
         }
 
         type_handler = get_type_handler(self.args['type'])
-        if type_handler:
-            spec.update(type_handler.get_spec())
+        spec.update(type_handler.get_spec())
 
         return spec
 
@@ -104,9 +103,11 @@ class InputPortDefinition(PortDefinition):
                    default=port.default)
 
     def get_spec(self):
+        from rill.engine.types import get_type_handler
         spec = super(InputPortDefinition, self).get_spec()
         if self.args['default'] is not NOT_SET:
-            spec['default'] = self.args['default']
+            type_handler = get_type_handler(self.args['type'])
+            spec['default'] = type_handler.to_primitive(self.args['default'])
         return spec
 
 

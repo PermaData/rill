@@ -33,7 +33,7 @@ def register(cls):
 
     Parameters
     ----------
-    cls : ``TypeHandler`` class
+    cls : Type[``TypeHandler``]
     """
     # LIFO
     _type_handlers.insert(0, cls)
@@ -52,9 +52,15 @@ def get_type_handler(type_def):
     -------
     ``TypeHandler``
     """
+    if type_def is None:
+        return UnspecifiedTypeHandler(type_def)
+
     for cls in _type_handlers:
         if cls.claim_type_def(type_def):
             return cls(type_def)
+
+    raise TypeHandlerError("Could not find type handler "
+                           "for {!r}".format(type_def))
 
 
 class TypeHandler(with_metaclass(ABCMeta, object)):
@@ -120,6 +126,26 @@ class TypeHandler(with_metaclass(ABCMeta, object)):
         raise NotImplementedError
 
 
+class UnspecifiedTypeHandler(TypeHandler):
+    def get_spec(self):
+        return {'type': 'any'}
+
+    def validate(self, value):
+        return value
+
+    def to_primitive(self, data):
+        # this is assumed to be json-serializable
+        return data
+
+    def to_native(self, data):
+        # this is assumed to be json-deserializable
+        return data
+
+    @classmethod
+    def claim_type_def(cls, type_def):
+        return False
+
+
 class BasicTypeHandler(TypeHandler):
     """
     Simple type handler that is used when setting a port's `type` to a basic
@@ -143,9 +169,11 @@ class BasicTypeHandler(TypeHandler):
                     value.__class__.__name__, self.type_def.__name__, err))
 
     def to_primitive(self, data):
+        # this is assumed to be json-serializable
         return data
 
     def to_native(self, data):
+        # this is assumed to be json-deserializable
         return data
 
     @classmethod
@@ -166,6 +194,8 @@ schematics.types.FloatType.primitive_type = float
 schematics.types.DecimalType.primitive_type = str
 schematics.types.BooleanType.primitive_type = bool
 schematics.types.DateTimeType.primitive_type = str
+schematics.types.DateType.primitive_type = str
+schematics.types.TimestampType.primitive_type = float
 schematics.types.ModelType.primitive_type = dict
 schematics.types.ListType.primitive_type = list
 schematics.types.DictType.primitive_type = dict
@@ -183,7 +213,7 @@ class SchematicsTypeHandler(TypeHandler):
         spec = {'type': TYPE_MAP.get(self.type_def.primitive_type, str)}
         choices = self.type_def.choices
         if choices:
-            spec['values'] = choices
+            spec['values'] = [self.to_primitive(c) for c in choices]
         return spec
 
     def validate(self, value):
