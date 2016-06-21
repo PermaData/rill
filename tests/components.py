@@ -75,7 +75,7 @@ def GenerateTestDataDumb(COUNT, OUT):
 
 
 @component
-@outport("OUT", optional=True, fixed_size=4, description="Generated stream",
+@outport("OUT", required=False, fixed_size=4, description="Generated stream",
          type=str, array=True)
 @inport("COUNT", description="Count of packets to be generated",
         type=int)
@@ -95,7 +95,7 @@ def GenerateOptionalFixedArray(COUNT, OUT):
 
 
 @component
-@outport("OUT", optional=True, description="Generated stream",
+@outport("OUT", required=False, description="Generated stream",
          type=str, array=True)
 @inport("COUNT", description="Count of packets to be generated",
         type=int)
@@ -115,7 +115,7 @@ def GenerateArray(COUNT, OUT):
 
 
 @component
-@outport("OUT", optional=False, fixed_size=2, description="Generated stream",
+@outport("OUT", required=True, fixed_size=2, description="Generated stream",
          type=str, array=True)
 @inport("COUNT", description="Count of packets to be generated",
         type=int)

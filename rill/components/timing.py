@@ -23,7 +23,7 @@ def Heartbeat(INTERVAL, OUT):
 @component
 @outport("OUT")
 @inport("IN")
-@inport("DELAY", type=float, optional=False)
+@inport("DELAY", type=float, required=True)
 def SlowPass(IN, DELAY, OUT):
     """
     Pass a stream of packets to an output stream with a delay between packets

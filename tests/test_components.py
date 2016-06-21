@@ -132,7 +132,7 @@ def test_pickle(net):
     # @component
     # @outport("OUT")
     # @inport("IN")
-    # @inport("DELAY", type=float, optional=False)
+    # @inport("DELAY", type=float, required=True)
     # def SlowPass(IN, DELAY, OUT):
     #     """
     #     Pass a stream of packets to an output stream with a delay between packets
@@ -361,7 +361,7 @@ def test_required_array_error():
     must be connected"""
     net = Network()
     gen = net.add_component("Generate", GenerateFixedSizeArray)
-    assert gen.ports['OUT'].optional is False
+    assert gen.ports['OUT'].required is True
     net.add_component("Discard1", Discard)
     net.connect("Generate.OUT[0]", "Discard1.IN")
     assert names(gen.outports) == ['OUT[0]', 'OUT[1]']
@@ -402,7 +402,7 @@ def test_add_component():
 
 def test_optional_fixed_size_array(net, discard):
     """if an array port specifies fixed_size, some elements may remain
-    unconnected if the array port is optional (not required)"""
+    unconnected if the array port is not required"""
     # fixed_size of 4
     net.add_component("Generate", GenerateOptionalFixedArray)
     dis1 = net.add_component("Discard1", discard)
@@ -422,7 +422,7 @@ def test_optional_fixed_size_array_error():
     connected if the array port is required"""
     net = Network()
     gen = net.add_component("Generate", GenerateFixedSizeArray)
-    assert gen.ports['OUT'].optional is False
+    assert gen.ports['OUT'].required is True
     gen.init()
     with pytest.raises(FlowError):
         gen.ports.OUT.open()

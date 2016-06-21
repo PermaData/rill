@@ -4,7 +4,7 @@ from rill import *
 @component
 @outport("OUT", type=str)
 @inport("IN", type=str)
-@inport("PRE", type=str, optional=False)
+@inport("PRE", type=str, required=True)
 def Prefix(IN, PRE, OUT):
     """
     Prefix each packet IN with the given PRE and copy it to OUT
@@ -20,8 +20,8 @@ def Prefix(IN, PRE, OUT):
 @component
 @outport("OUT", type=str)
 @inport("IN", type=str)
-@inport("PRE", type=str, optional=False)
-@inport("POST", type=str, optional=False)
+@inport("PRE", type=str, required=True)
+@inport("POST", type=str, required=True)
 def Affix(IN, PRE, POST, OUT):
     """
     For each packet IN add the Strings PRE as a prefix and POST as a suffix,
@@ -254,8 +254,8 @@ def LowerCase(IN, OUT):
 @outport("OUT", type=str)
 @inport("IN", description="Strings to have replacement applied", type=str)
 @inport("REGEX", description="regular expression",
-        type=str, optional=False)
-@inport("REPL", description="Replacement String", type=str, optional=False)
+        type=str, required=True)
+@inport("REPL", description="Replacement String", type=str, required=True)
 def ReplaceRegExp(IN, REGEX, REPL, OUT):
     """
     Replace all occurrences of FIND in each packet IN with the given
@@ -272,8 +272,8 @@ def ReplaceRegExp(IN, REGEX, REPL, OUT):
 @component
 @outport("OUT")
 @inport("IN", description="Strings to be modified", type=str)
-@inport("FIND", description="Search target", type=str, optional=False)
-@inport("REPL", description="Replacement text", type=str, optional=False)
+@inport("FIND", description="Search target", type=str, required=True)
+@inport("REPL", description="Replacement text", type=str, required=True)
 def ReplaceString(IN, FIND, REPL, OUT):
     """
     Replace all occurrences of text matching FIND (case-sensitive) in each

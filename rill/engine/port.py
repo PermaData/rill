@@ -62,7 +62,7 @@ class BasePort(with_metaclass(ABCMeta, object)):
     Base class for all ports
     """
 
-    def __init__(self, component, name, index=None, optional=True, type=None,
+    def __init__(self, component, name, index=None, required=False, type=None,
                  description=None):
         """
         Parameters
@@ -80,7 +80,7 @@ class BasePort(with_metaclass(ABCMeta, object)):
         self._name = name
         self.type = get_type_handler(type) if type is not None else None
         self.index = index
-        self.optional = optional
+        self.required = required
         self.description = description
 
     def __str__(self):
@@ -166,7 +166,7 @@ class Port(BasePort):
         return packet_content
 
     def open(self):
-        if not self.is_connected() and not self.optional:
+        if not self.is_connected() and self.required:
             raise FlowError(
                 "{} port is required, but not connected".format(self))
 
@@ -327,7 +327,7 @@ class ArrayPort(BasePort, PortContainerMixin):
 
     def _create_element(self, index):
         return self.port_class(self.component, self.name, index=index,
-                               type=self.type, optional=self.optional)
+                               type=self.type, required=self.required)
 
     def create_element(self, index=None):
         """
@@ -361,12 +361,12 @@ class ArrayPort(BasePort, PortContainerMixin):
         """
         self._check_port_types()
 
-        if not self.ports() and not self.optional:
+        if not self.ports() and not self.required:
             raise FlowError(
                 "Required {} {} has no members".format(
                     self.port_class.__name__, self))
 
-        if self.fixed_size is not None and not self.optional:
+        if self.fixed_size is not None and not self.required:
             missing = []
             for port in self.ports():
                 if not port.is_connected():

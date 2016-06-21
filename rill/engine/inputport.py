@@ -137,7 +137,7 @@ class InputPort(Port, InputInterface):
         self.auto_receive = static
 
     def open(self):
-        if not self.is_connected() and not self.optional:
+        if not self.is_connected() and self.required:
             raise FlowError(
                 "{} port is required, but not connected".format(self))
 
@@ -655,7 +655,7 @@ class InputArray(ArrayPort, PortInterface):
 
     def _create_element(self, index):
         return self.port_class(self.component, self.name, index=index,
-                               type=self.type, optional=self.optional,
+                               type=self.type, required=self.required,
                                default=self.default, static=self.auto_receive)
 
 

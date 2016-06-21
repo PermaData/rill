@@ -14,9 +14,9 @@ def First(IN, OUT):
 
 @component
 @outport("ACC")
-@outport("REJ", optional=True)
+@outport("REJ", required=False)
 @inport("IN")
-@inport("NUMBER", optional=False)
+@inport("NUMBER", required=True)
 def SelNthItem(IN, NUMBER, ACC, REJ):
     """Select from IN one packet by NUMBER (0 means first), sending via ACC,
     rejected packets via REJ"""

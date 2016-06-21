@@ -5,7 +5,7 @@ from rill.fn import synced
 @component
 @inport("IN", description="Packets to be written", type=str)
 @inport("FILEPATH", description="File name", type=str)
-@outport("OUT", optional=True, description="Output port, if connected",
+@outport("OUT", required=False, description="Output port, if connected",
          type=str)
 @must_run
 def WriteLines(IN, FILEPATH, OUT):
@@ -42,7 +42,7 @@ def WriteLines(IN, FILEPATH, OUT):
 @component
 @inport("IN", description="Packets to be written", type=str)
 @inport("FILEPATH", description="File name", type=str)
-@outport("OUT", optional=True, description="Output port, if connected",
+@outport("OUT", required=False, description="Output port, if connected",
          type=str)
 @must_run
 def Write(IN, FILEPATH, OUT):

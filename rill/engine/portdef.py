@@ -9,12 +9,12 @@ class PortDefinition(object):
     _kind = None
 
     def __init__(self, name, type=None, array=False, fixed_size=None,
-                 description='', optional=True):
+                 description='', required=False):
         self.array = array
         self.args = {
             'name': name,
             'type': type,
-            'optional': optional,
+            'required': required,
             'description': description
         }
         if fixed_size is not None:
@@ -56,7 +56,7 @@ class PortDefinition(object):
             'id': self.args['name'],
             'description': self.args['description'],
             'addressable': self.array,
-            'required': (not self.args['optional']),
+            'required': (not self.args['required']),
         }
 
         type_handler = get_type_handler(self.args['type'])
@@ -73,10 +73,10 @@ class InputPortDefinition(PortDefinition):
     _kind = 'input'
 
     def __init__(self, name, type=None, array=False, fixed_size=None,
-                 description='', optional=True, static=False, default=NOT_SET):
+                 description='', required=False, static=False, default=NOT_SET):
         super(InputPortDefinition, self).__init__(
             name, type=type, array=array, fixed_size=fixed_size,
-            description=description, optional=optional)
+            description=description, required=required)
         self.args['static'] = static
         self.args['default'] = default
 
@@ -100,7 +100,7 @@ class InputPortDefinition(PortDefinition):
         return cls(port._name, type=port.type, array=port.is_array(),
                    fixed_size=port.fixed_size if port.is_array() else None,
                    description=port.description,
-                   optional=port.optional, static=port.auto_receive,
+                   required=port.required, static=port.auto_receive,
                    default=port.default)
 
     def get_spec(self):
@@ -136,7 +136,7 @@ class OutputPortDefinition(PortDefinition):
         return cls(port._name, type=port.type, array=port.is_array(),
                    fixed_size=port.fixed_size if port.is_array() else None,
                    description=port.description,
-                   optional=port.optional)
+                   required=port.required)
 
     def get_spec(self):
         spec = super(OutputPortDefinition, self).get_spec()

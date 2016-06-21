@@ -5,7 +5,7 @@ import itertools
 
 @component
 @inport("IN", description="Packets to be displayed")
-@outport("OUT", optional=True, description="Output port, if connected")
+@outport("OUT", required=False, description="Output port, if connected")
 def Output(IN, OUT):
     """displays the content of incoming IPs open and close brackets"""
     level = 1
@@ -107,7 +107,7 @@ def Discard(IN):
 
 # @component
 @inport("IN", description="Incoming stream")
-@outport("OUT", description="Stream being passed through", optional=True)
+@outport("OUT", description="Stream being passed through", required=False)
 @outport("COUNT", description="Count packet to be output", type=int)
 @must_run
 # def Counter(IN, OUT, COUNT):
@@ -178,7 +178,7 @@ def Sort(IN, MAX, OUT):
 @component
 @inport("IN", description="Packets to be sorted", type=int)
 @inport("MAX", description="Maximum number of packets to be sorted", type=int,
-        optional=False)
+        required=True)
 @outport("OUT", description="Output port")
 def Cap(IN, MAX, OUT):
     """
