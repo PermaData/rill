@@ -16,6 +16,7 @@ import argparse
 import requests
 import gevent
 import geventwebsocket
+from past.builtins import basestring
 
 from rill.engine.component import Component
 from rill.engine.inputport import Connection
@@ -153,9 +154,8 @@ class Runtime(object):
         module : str or `ModuleType`
         overwrite : bool
         """
-        # FIXME: py3
         if isinstance(module, basestring):
-            module = __import__(module)
+            module = pydoc.locate(module)
 
         if not inspect.ismodule(module):
             raise ValueError('module must be either a module or the name of a '
