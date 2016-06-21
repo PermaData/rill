@@ -23,7 +23,7 @@ from rill.engine.network import Network
 from rill.engine.subnet import SubNet
 from rill.engine.exceptions import FlowError
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class RuntimeError(FlowError):
@@ -54,14 +54,14 @@ class Runtime(object):
     PROTOCOL_VERSION = '0.5'
 
     def __init__(self):
-        self.log = logging.getLogger('%s.%s' % (self.__class__.__module__,
-                                                self.__class__.__name__))
+        self.logger = logging.getLogger('%s.%s' % (self.__class__.__module__,
+                                                   self.__class__.__name__))
 
         self._component_types = {}  # Component metadata, keyed by component name
         self._graphs = {}  # Graph instances, keyed by graph ID
         self._executors = {}  # GraphExecutor instances, keyed by graph ID
 
-        self.log.debug('Initialized runtime!')
+        self.logger.debug('Initialized runtime!')
 
     def get_runtime_meta(self):
         # Supported protocol capabilities
@@ -137,7 +137,7 @@ class Runtime(object):
         if name in self._component_types and not overwrite:
             raise ValueError("Component {0} already registered".format(name))
 
-        self.log.debug('Registering component: {0}'.format(name))
+        self.logger.debug('Registering component: {0}'.format(name))
 
         self._component_types[name] = {
             'class': component_class,
@@ -161,7 +161,7 @@ class Runtime(object):
             raise ValueError('module must be either a module or the name of a '
                              'module')
 
-        self.log.debug('Registering components in module: {}'.format(
+        self.logger.info('Registering components in module: {}'.format(
             module.__name__))
 
         registered = 0
@@ -176,7 +176,7 @@ class Runtime(object):
                 registered += 1
 
         if registered == 0:
-            self.log.warn('No components were found in module: {}'.format(
+            self.logger.warn('No components were found in module: {}'.format(
                 module.__name__))
 
     def get_source_code(self, component_name):
@@ -206,7 +206,7 @@ class Runtime(object):
         """
         Execute a graph.
         """
-        self.log.debug('Graph {}: Starting execution'.format(graph_id))
+        self.logger.debug('Graph {}: Starting execution'.format(graph_id))
 
         graph = self._get_graph(graph_id)
 
@@ -226,7 +226,7 @@ class Runtime(object):
         """
         Stop executing a graph.
         """
-        self.log.debug('Graph {}: Stopping execution'.format(graph_id))
+        self.logger.debug('Graph {}: Stopping execution'.format(graph_id))
         if graph_id not in self._executors:
             raise ValueError('Invalid graph: {}'.format(graph_id))
 
@@ -265,20 +265,20 @@ class Runtime(object):
         try:
             return self._graphs[graph_id]
         except KeyError:
-            raise RuntimeError('Requested graph not found')
+            raise RillRuntimeError('Requested graph not found')
 
     def new_graph(self, graph_id):
         """
         Create a new graph.
         """
-        self.log.debug('Graph {}: Initializing'.format(graph_id))
+        self.logger.debug('Graph {}: Initializing'.format(graph_id))
         self._graphs[graph_id] = Network()
 
     def add_node(self, graph_id, node_id, component_id, metadata):
         """
         Add a component instance.
         """
-        self.log.debug('Graph {}: Adding node {}({})'.format(
+        self.logger.debug('Graph {}: Adding node {}({})'.format(
             graph_id, component_id, node_id))
 
         graph = self._get_graph(graph_id)
@@ -291,7 +291,7 @@ class Runtime(object):
         """
         Destroy component instance.
         """
-        self.log.debug('Graph {}: Removing node {}'.format(
+        self.logger.debug('Graph {}: Removing node {}'.format(
             graph_id, node_id))
 
         graph = self._get_graph(graph_id)
@@ -301,7 +301,7 @@ class Runtime(object):
         """
         Rename component instance.
         """
-        self.log.debug('Graph {}: Renaming node {} to {}'.format(
+        self.logger.debug('Graph {}: Renaming node {} to {}'.format(
             graph_id, orig_node_id, new_node_id))
 
         graph = self._get_graph(graph_id)
@@ -321,7 +321,7 @@ class Runtime(object):
         """
         Connect ports between components.
         """
-        self.log.debug('Graph {}: Connecting ports: {} -> {}'.format(
+        self.logger.debug('Graph {}: Connecting ports: {} -> {}'.format(
             graph_id, src, tgt))
 
         graph = self._get_graph(graph_id)
@@ -332,7 +332,7 @@ class Runtime(object):
         """
         Disconnect ports between components.
         """
-        self.log.debug('Graph {}: Disconnecting ports: {} -> {}'.format(
+        self.logger.debug('Graph {}: Disconnecting ports: {} -> {}'.format(
             graph_id, src, tgt))
 
         graph = self._get_graph(graph_id)
@@ -343,7 +343,7 @@ class Runtime(object):
         """
         Set the inital packet for a component inport.
         """
-        self.log.info('Graph {}: Setting IIP to {!r} on port {}'.format(
+        self.logger.info('Graph {}: Setting IIP to {!r} on port {}'.format(
             graph_id, data, src))
 
         # FIXME: noflo-ui is sending an 'addinitial foo.IN []' even when
@@ -363,7 +363,7 @@ class Runtime(object):
         """
         Remove the initial packet for a component inport.
         """
-        self.log.debug('Graph {}: Removing IIP from port {}'.format(
+        self.logger.debug('Graph {}: Removing IIP from port {}'.format(
             graph_id, src))
 
         graph = self._get_graph(graph_id)
@@ -462,7 +462,7 @@ def create_websocket_application(runtime):
         def __init__(self, ws):
             super(WebSocketRuntimeApplication, self).__init__(self)
 
-            self.log = logging.getLogger('%s.%s' % (self.__class__.__module__,
+            self.logger = logging.getLogger('%s.%s' % (self.__class__.__module__,
                                                     self.__class__.__name__))
             self.runtime = runtime
 
@@ -480,16 +480,16 @@ def create_websocket_application(runtime):
             return 'noflo'
 
         def on_open(self):
-            self.log.info("Connection opened")
+            self.logger.info("Connection opened")
 
         def on_close(self, reason):
-            self.log.info("Connection closed. Reason: %s" % reason)
+            self.logger.info("Connection closed. Reason: %s" % reason)
 
         def on_message(self, message, **kwargs):
-            self.log.debug('MESSAGE: %s' % message)
+            self.logger.debug('MESSAGE: %s' % message)
 
             if not message:
-                self.log.warn('Got empty message')
+                self.logger.warn('Got empty message')
                 return
 
             m = json.loads(message)
@@ -509,20 +509,20 @@ def create_websocket_application(runtime):
                 payload = m['payload']
             except KeyError:
                 # FIXME: send error?
-                self.log.warn("Malformed message")
+                self.logger.warn("Malformed message")
                 return
 
             try:
                 handler = dispatch[protocol]
             except KeyError:
                 # FIXME: send error?
-                self.log.warn("Subprotocol '{}' "
+                self.logger.warn("Subprotocol '{}' "
                               "not supported".format(protocol))
                 return
 
             try:
                 handler(command, payload)
-            except RuntimeError as err:
+            except RillRuntimeError as err:
                 self.send_error(protocol, str(err))
 
         def send(self, protocol, command, payload):
@@ -577,7 +577,7 @@ def create_websocket_application(runtime):
             # tell UI info about runtime and supported capabilities
             if command == 'getruntime':
                 payload = self.runtime.get_runtime_meta()
-                # self.log.debug(json.dumps(payload, indent=4))
+                # self.logger.debug(json.dumps(payload, indent=4))
                 self.send('runtime', 'runtime', payload)
 
             # network:packet, allows sending data in/out to networks in this
@@ -590,7 +590,7 @@ def create_websocket_application(runtime):
                 self.send('runtime', 'packet', payload)
 
             else:
-                self.log.warn("Unknown command '%s' for protocol '%s' " %
+                self.logger.warn("Unknown command '%s' for protocol '%s' " %
                               (command, 'runtime'))
 
         def handle_component(self, command, payload):
@@ -627,7 +627,7 @@ def create_websocket_application(runtime):
                 }
                 self.send('component', 'source', payload)
             else:
-                self.log.warn("Unknown command '%s' for protocol '%s' " %
+                self.logger.warn("Unknown command '%s' for protocol '%s' " %
                               (command, 'component'))
 
         def handle_graph(self, command, payload):
@@ -650,7 +650,7 @@ def create_websocket_application(runtime):
                 try:
                     return payload['graph']
                 except KeyError:
-                    raise RuntimeError('No graph specified')
+                    raise RillRuntimeError('No graph specified')
 
             # New graph
             if command == 'clear':
@@ -708,7 +708,7 @@ def create_websocket_application(runtime):
                 self.send('graph', 'graphsdone', None)
 
             else:
-                self.log.warn("Unknown command '%s' for protocol '%s'" %
+                self.logger.warn("Unknown command '%s' for protocol '%s'" %
                               (command, 'graph'))
                 return
 
@@ -764,7 +764,7 @@ def create_websocket_application(runtime):
                 self.runtime.set_debug(graph_id, payload['enable'])
                 self.send('network', 'debug', payload)
             else:
-                self.log.warn("Unknown command '%s' for protocol '%s'" %
+                self.logger.warn("Unknown command '%s' for protocol '%s'" %
                               (command, 'network'))
 
     return WebSocketRuntimeApplication
@@ -812,7 +812,7 @@ class FlowhubRegistry(RuntimeRegistry):
     FlowHub or NoFlo-UI.
     """
     def __init__(self):
-        self.log = logging.getLogger('%s.%s' % (self.__class__.__module__,
+        self.logger = logging.getLogger('%s.%s' % (self.__class__.__module__,
                                                 self.__class__.__name__))
 
         self._endpoint = 'http://api.flowhub.io'
@@ -838,7 +838,7 @@ class FlowhubRegistry(RuntimeRegistry):
             'secret': '9129923',  # unused
         }
 
-        self.log.info('Registering runtime %s for user %s...' % (runtime_id, user_id))
+        self.logger.info('Registering runtime %s for user %s...' % (runtime_id, user_id))
         response = requests.put(self.runtime_url(runtime_id),
                                 data=json.dumps(payload),
                                 headers={'Content-type': 'application/json'})
@@ -846,7 +846,7 @@ class FlowhubRegistry(RuntimeRegistry):
 
     def ping_runtime(self, runtime_id):
         url = self.runtime_url(runtime_id)
-        self.log.info('Pinging runtime {}...'.format(url))
+        self.logger.info('Pinging runtime {}...'.format(url))
         response = requests.post(url)
         self._ensure_http_success(response)
 
@@ -902,6 +902,9 @@ def main():
         '--log-file', metavar='FILE_PATH',
         help='File to send log output to (default: none)')
     argp.add_argument(
+        '-m', '--module', dest='modules', action='append',
+        help='Module to load')
+    argp.add_argument(
         '-v', '--verbose', action='store_true',
         help='Enable verbose logging')
 
@@ -925,12 +928,12 @@ def main():
     address = 'ws://{}:{:d}'.format(args.host, args.port)
     runtime_id = args.flowhub_runtime_id
     if not runtime_id and not args.flowhub_user_id:
-        log.warn('No runtime ID or user ID was specified: skipping '
-                 'registration with flowhub.')
+        logger.warn('No runtime ID or user ID was specified: skipping '
+                    'registration with flowhub.')
     elif not runtime_id and args.flowhub_user_id:
         runtime_id = create_runtime_id(address, args.flowhub_user_id)
-        log.warn('No runtime ID was specified, so one was '
-                 'generated: {}'.format(runtime_id))
+        logger.warn('No runtime ID was specified, so one was '
+                    'generated: {}'.format(runtime_id))
 
     runtime = Runtime()
 
