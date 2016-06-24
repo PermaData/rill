@@ -4,7 +4,6 @@ from collections import OrderedDict, Counter
 from future.utils import with_metaclass
 from future.utils import raise_from
 
-from rill.engine.types import get_type_handler
 from rill.engine.exceptions import FlowError
 
 
@@ -78,7 +77,7 @@ class BasePort(with_metaclass(ABCMeta, object)):
         assert not isinstance(component, str)
         self.component = component
         self._name = name
-        self.type = get_type_handler(type)
+        self.type = type
         self.index = index
         self.required = required
         self.description = description

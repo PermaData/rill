@@ -1,3 +1,6 @@
+import inspect
+import itertools
+
 from rill.utils import NOT_SET
 
 
@@ -7,20 +10,42 @@ class PortDefinition(object):
     prior to instantiation of the component and the ports themselves.
     """
     _kind = None
+    __slots__ = ('array', 'name', 'type', 'required', 'description',
+                 'fixed_size')
 
     def __init__(self, name, type=None, array=False, fixed_size=None,
                  description='', required=False):
+        from rill.engine.types import get_type_handler
         self.array = array
-        self.args = {
-            'name': name,
-            'type': type,
-            'required': required,
-            'description': description
-        }
-        if fixed_size is not None:
-            self.args['fixed_size'] = fixed_size
+        self.name = name
+        self.type = get_type_handler(type)
+        self.required = required
+        self.description = description
+        self.fixed_size = fixed_size
+
+    @property
+    def data(self):
+        """
+        Returns
+        -------
+        dict
+        """
+        data = {k: getattr(self, k) for k in
+                itertools.chain(*[getattr(cls, '__slots__', tuple()) for cls
+                                  in inspect.getmro(self.__class__)])}
+        is_array = data.pop('array')
+        if not is_array:
+            data.pop('fixed_size')
+        return data
 
     def get_port_type(self):
+        '''
+        Get the class used by this port.
+
+        Returns
+        -------
+        Type[``rill.engine.port.BasePort``]
+        '''
         raise NotImplementedError
 
     def create_port(self, component):
@@ -35,13 +60,13 @@ class PortDefinition(object):
         -------
         ``rill.engine.port.BasePort``
         """
-        if self.args.get('fixed_size') and not self.array:
+        if self.fixed_size is not None and not self.array:
             raise ValueError(
                 "{}.{}: @{} specified fixed_size but not array".format(
-                    self, self.args['name'],
+                    self, self.name,
                     self.__class__.__name__))
         ptype = self.get_port_type()
-        return ptype(component, **self.args)
+        return ptype(component, **self.data)
 
     def get_spec(self):
         """
@@ -51,16 +76,13 @@ class PortDefinition(object):
         -------
         dict
         """
-        from rill.engine.types import get_type_handler
         spec = {
-            'id': self.args['name'],
-            'description': self.args['description'],
+            'id': self.name,
+            'description': self.description,
             'addressable': self.array,
-            'required': (not self.args['required']),
+            'required': self.required,
         }
-
-        type_handler = get_type_handler(self.args['type'])
-        spec.update(type_handler.get_spec())
+        spec.update(self.type.get_spec())
 
         return spec
 
@@ -70,14 +92,15 @@ class InputPortDefinition(PortDefinition):
     Decorator to add an input port to a component.
     """
     _kind = 'input'
+    __slots__ = ('static', 'default')
 
     def __init__(self, name, type=None, array=False, fixed_size=None,
                  description='', required=False, static=False, default=NOT_SET):
         super(InputPortDefinition, self).__init__(
             name, type=type, array=array, fixed_size=fixed_size,
             description=description, required=required)
-        self.args['static'] = static
-        self.args['default'] = default
+        self.static = static
+        self.default = default
 
     def get_port_type(self):
         from rill.engine.inputport import InputPort, InputArray
@@ -90,24 +113,22 @@ class InputPortDefinition(PortDefinition):
 
         Parameters
         ----------
-        port : ``rill.engine.inputport.InputPort``
+        port : Union[``rill.engine.inputport.InputPort``, ``rill.engine.inputport.InputArray``]
 
         Returns
         -------
         ``InputPortDefinition``
         """
-        return cls(port._name, type=port.type, array=port.is_array(),
+        return cls(port._name, type=port.type.type_def, array=port.is_array(),
                    fixed_size=port.fixed_size if port.is_array() else None,
                    description=port.description,
                    required=port.required, static=port.auto_receive,
                    default=port.default)
 
     def get_spec(self):
-        from rill.engine.types import get_type_handler
         spec = super(InputPortDefinition, self).get_spec()
-        if self.args['default'] is not NOT_SET:
-            type_handler = get_type_handler(self.args['type'])
-            spec['default'] = type_handler.to_primitive(self.args['default'])
+        if self.default is not NOT_SET:
+            spec['default'] = self.type.to_primitive(self.default)
         return spec
 
 
@@ -116,6 +137,7 @@ class OutputPortDefinition(PortDefinition):
     Decorator to add an output port to a component.
     """
     _kind = 'output'
+    __slots__ = ()
 
     def get_port_type(self):
         from rill.engine.outputport import OutputPort, OutputArray
@@ -128,13 +150,13 @@ class OutputPortDefinition(PortDefinition):
 
         Parameters
         ----------
-        port : ``rill.engine.outputport.OutputPort``
+        port : Union[``rill.engine.outputport.OutputPort``, ``rill.engine.outputport.OutputArray``]
 
         Returns
         -------
         ``OutputPortDefinition``
         """
-        return cls(port._name, type=port.type, array=port.is_array(),
+        return cls(port._name, type=port.type.type_def, array=port.is_array(),
                    fixed_size=port.fixed_size if port.is_array() else None,
                    description=port.description,
                    required=port.required)

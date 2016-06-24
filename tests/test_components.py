@@ -165,7 +165,8 @@ def test_component_with_inheritance():
     class B(A):
         pass
 
-    # assert [x.args['name'] for x in B.inport_definitions] == ['IN', 'OPT']
+    assert names(B.port_definitions()) == ['IN_NULL', 'IN', 'OPT', 'OUT_NULL',
+                                           'OUT']
 
     net = Network()
     b = net.add_component('b', B)

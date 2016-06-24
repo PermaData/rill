@@ -237,7 +237,7 @@ class SubNet(with_metaclass(ABCMeta, Component)):
                 else OutputPortDefinition
             assert isinstance(external_port_name, basestring)
             portdef = def_cls.from_port(internal_port)
-            portdef.args['name'] = external_port_name
+            portdef.name = external_port_name
             external_port = portdef.create_port(self)
             self.ports[external_port_name] = external_port
         else:
