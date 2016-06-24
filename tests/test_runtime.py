@@ -1,8 +1,3 @@
-import pytest
-
-import gevent.monkey
-import gevent
-
 from rill.engine.runner import ComponentRunner
 from rill.runtime import Runtime
 
@@ -11,11 +6,6 @@ from tests.components import *
 import logging
 ComponentRunner.logger.setLevel(logging.DEBUG)
 
-
-# we use socket as our canary
-is_patched = gevent.monkey.is_module_patched("socket")
-requires_patch = pytest.mark.skipif(not is_patched,
-                                    reason='requires patched gevent')
 
 def test_get_graph_messages():
     """

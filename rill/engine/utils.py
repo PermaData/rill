@@ -4,13 +4,17 @@ import gevent
 from gevent.lock import RLock
 from termcolor import colored
 
+is_patched = False
+
 
 def patch():
-    if os.environ.get('RILL_SKIP_GEVENT_PATCH', False):
+    global is_patched
+    if is_patched or os.environ.get('RILL_SKIP_GEVENT_PATCH', False):
         return
     from gevent import monkey
     print("Performing gevent monkey-patching")
     monkey.patch_all()
+    is_patched = True
 
 
 class LogFormatter(logging.LoggerAdapter):

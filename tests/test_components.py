@@ -3,6 +3,9 @@ import pytest
 import gevent.monkey
 import gevent
 
+import rill.engine.utils
+rill.engine.utils.patch()
+
 from rill.engine.exceptions import FlowError
 from rill.engine.network import Network, apply_network
 from rill.engine.outputport import OutputPort, OutputArray
@@ -27,8 +30,7 @@ import logging
 ComponentRunner.logger.setLevel(logging.DEBUG)
 
 
-# we use socket as our canary
-is_patched = gevent.monkey.is_module_patched("socket")
+is_patched = rill.engine.utils.is_patched
 requires_patch = pytest.mark.skipif(not is_patched,
                                     reason='requires patched gevent')
 
