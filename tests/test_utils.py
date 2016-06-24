@@ -57,38 +57,38 @@ def test_annotation_defaults():
 def test_annotation_inherited_defaults():
     @AddAThing(1)
     @AddAThing(2)
-    class ClassA(object):
+    class BaseA(object):
         list_of_things = []
 
     @AddAThing(3)
     @AddAThing(4)
-    class ClassB(object):
+    class BaseB(object):
         pass
 
-    class ClassC(ClassB):
+    class SubB(BaseB):
         pass
 
     @AddAThing(5)
     @AddAThing(6)
-    class ClassD(ClassC):
+    class SubSubB(SubB):
         pass
 
     @AddAThing(7)
-    class ClassE(ClassD, ClassA):
+    class Multi(SubSubB, BaseA):
         pass
 
-    assert AddAThing.get(ClassA) == [1, 2]
-    assert AddAThing.get_inherited(ClassA) == [1, 2]
+    assert AddAThing.get(BaseA) == [1, 2]
+    assert AddAThing.get_inherited(BaseA) == [1, 2]
 
-    assert AddAThing.get(ClassB) == [3, 4]
-    assert AddAThing.get_inherited(ClassB) == [3, 4]
+    assert AddAThing.get(BaseB) == [3, 4]
+    assert AddAThing.get_inherited(BaseB) == [3, 4]
 
-    assert AddAThing.get(ClassC) == []
-    assert AddAThing.get_inherited(ClassC) == [3, 4]
+    assert AddAThing.get(SubB) == []
+    assert AddAThing.get_inherited(SubB) == [3, 4]
 
-    assert AddAThing.get(ClassD) == [5, 6]
-    assert AddAThing.get_inherited(ClassD) == [3, 4, 5, 6]
-    assert AddAThing.get_inherited(ClassE) == [1, 2, 3, 4, 5, 6, 7]
+    assert AddAThing.get(SubSubB) == [5, 6]
+    assert AddAThing.get_inherited(SubSubB) == [3, 4, 5, 6]
+    assert AddAThing.get_inherited(Multi) == [1, 2, 3, 4, 5, 6, 7]
 
 
 def test_multi_annotation_error():
