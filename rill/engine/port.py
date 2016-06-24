@@ -361,12 +361,12 @@ class ArrayPort(BasePort, PortContainerMixin):
         """
         self._check_port_types()
 
-        if not self.ports() and not self.required:
+        if not self.ports() and self.required:
             raise FlowError(
                 "Required {} {} has no members".format(
                     self.port_class.__name__, self))
 
-        if self.fixed_size is not None and not self.required:
+        if self.fixed_size is not None and self.required:
             missing = []
             for port in self.ports():
                 if not port.is_connected():
