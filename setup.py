@@ -86,6 +86,11 @@ setup(
     #     'tox': Tox,
     #     'ptest': PyTest
     # },
+    entry_points={
+        'console_scripts': [
+            'rillrun = rill.cli:main'
+        ]
+    },
     install_requires=install_requires,
     tests_require=tests_requires
 )

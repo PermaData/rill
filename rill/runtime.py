@@ -1,19 +1,13 @@
-#!/usr/bin/env python
-
 import os
-import sys
-import uuid
+import pydoc
 import logging
 import json
-from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 import inspect
 import functools
 import traceback
 import datetime
 
-import argparse
-import requests
 import gevent
 import geventwebsocket
 from past.builtins import basestring
@@ -25,6 +19,7 @@ from rill.engine.subnet import SubNet
 from rill.engine.exceptions import FlowError
 
 logger = logging.getLogger(__name__)
+_initialized = False
 
 
 class RillRuntimeError(FlowError):
@@ -43,6 +38,128 @@ def add_callback(f, callback):
         callback(*args, **kwargs)
         return f(*args, **kwargs)
     return wrapper
+
+
+def expandpath(p):
+    return os.path.abspath(os.path.expanduser(os.path.expandvars(p)))
+
+
+def _itermodules():
+    import imp
+    import sys
+    suffixes = tuple([x[0] for x in imp.get_suffixes()])
+    # # locate all modules that look like `rill_cmds.<mypackage>`
+    # try:
+    #     mod = __import__(COMMAND_MODULE, None, None)
+    # except ImportError as err:
+    #     if err.message != 'No module named {}'.format(COMMAND_MODULE):
+    #         raise
+    # else:
+    #     for path in mod.__path__:
+    #         for filename in os.listdir(expandpath(path)):
+    #             if filename.endswith(suffixes) \
+    #                     and not filename.startswith('_'):
+    #                 name = os.path.splitext(filename)[0]
+    #                 name = name.encode('ascii', 'replace')
+    #                 modname = COMMAND_MODULE + '.' + name
+    #                 yield modname
+
+    # locate all modules that look like `rill_<mypackage>`
+    for path in sys.path:
+        path = expandpath(path)
+        try:
+            for filename in os.listdir(path):
+                if filename.endswith(suffixes) \
+                        and filename.startswith('rill_'):
+                    name = os.path.splitext(filename)[0]
+                    name = name.encode('ascii', 'replace')
+                    yield name
+        except OSError:
+            pass
+
+    modnames = os.environ.get('RILL_MODULES', None)
+    if modnames:
+        for modname in modnames.split(os.path.pathsep):
+            yield modname
+
+
+def _import_component_modules():
+    '''
+    Import component collection modules.
+
+    Modules are discovered in the following ways:
+    - Modules named `rill_cmds.<mycollection>`
+    - Modules named `rill_<mycollection>`
+    - Modules listed in `RILL_MODULES` environment variable
+
+    Additional, you can specify `RILL_PYTHONPATH` environment variable to
+    temporariliy extend the python search path (`sys.path`) during the
+    search for the above modules.
+    '''
+    import imp
+    import sys
+    suffixes = tuple([x[0] for x in imp.get_suffixes()])
+    # import pydevd; pydevd.settrace();
+
+    names = set()
+
+    def _uniquify(name):
+        # uniqify the name
+        orig = name
+        suffix = 1
+        while name in names:
+            name = orig + str(suffix)
+            suffix += 1
+        return name
+
+    paths = os.environ.get('RILL_PYTHONPATH', None)
+    # separate files from folders on the path:
+    files = []
+    dirs = []
+    if paths:
+        paths = paths.split(':')
+        for p in paths:
+            if p.endswith(suffixes):
+                path, name = os.path.split(os.path.splitext(p)[0])
+                name = _uniquify(name)
+                names.add(name)
+                files.append((name, p))
+            else:
+                dirs.append(p)
+
+        if dirs:
+            # put folders on sys.path so that component modules within them are
+            # found by __import__ below
+            orig_sys_path = list(sys.path)
+            sys.path.extend(dirs)
+
+    try:
+        for modname in _itermodules():
+            try:
+                # logger.debug('Importing %s' % modname)
+                __import__(modname, None, None, [])
+            except ImportError:
+                import traceback
+                traceback.print_exc()
+
+        # load files that were explicitly added to RILL_PATH
+        for name, filename in files:
+            imp.load_source(name, filename)
+
+    finally:
+        if dirs:
+            # restore
+            sys.path = orig_sys_path
+
+
+def init():
+    '''
+    Initialize rill.
+    '''
+    global _initialized
+    if not _initialized:
+        _import_component_modules()
+    _initialized = True
 
 
 class Runtime(object):
@@ -115,13 +232,13 @@ class Runtime(object):
 
         return specs
 
-    def register_component(self, component_class, overwrite=False):
+    def register_component(self, component_class, collection, overwrite=False):
         """
         Register a component class.
 
         Parameters
         ----------
-        component_class : ``rill.enginge.component.Component``
+        component_class : Type[``rill.enginge.component.Component``]
             the Component class to register.
         overwrite : bool
             whether the component be overwritten if it already exists.
@@ -133,7 +250,8 @@ class Runtime(object):
                              'from Component')
 
         spec = component_class.get_spec()
-        name = spec['name']
+        name = component_class.type_name or component_class.__name__
+        spec['name'] = '{0}/{1}'.format(collection, name)
 
         if name in self._component_types and not overwrite:
             raise ValueError("Component {0} already registered".format(name))
@@ -151,7 +269,7 @@ class Runtime(object):
 
         Parameters
         ----------
-        module : str or `ModuleType`
+        module : Union[str, `ModuleType`]
         overwrite : bool
         """
         if isinstance(module, basestring):
@@ -164,15 +282,16 @@ class Runtime(object):
         self.logger.info('Registering components in module: {}'.format(
             module.__name__))
 
+        # collection = getattr(module, 'COLLECTION_NAME', module.__name__)
+        collection = module.__name__
         registered = 0
-        for obj_name in dir(module):
-            class_obj = getattr(module, obj_name)
+        for obj_name, class_obj in inspect.getmembers(module):
             if (inspect.isclass(class_obj) and
-                    (class_obj != Component) and
-                    (not inspect.isabstract(class_obj)) and
-                    (not issubclass(class_obj, SubNet)) and
+                    class_obj is not Component and
+                    not inspect.isabstract(class_obj) and
+                    not issubclass(class_obj, SubNet) and
                     issubclass(class_obj, Component)):
-                self.register_component(class_obj, overwrite)
+                self.register_component(class_obj, collection, overwrite)
                 registered += 1
 
         if registered == 0:
@@ -208,7 +327,7 @@ class Runtime(object):
         """
         self.logger.debug('Graph {}: Starting execution'.format(graph_id))
 
-        graph = self._get_graph(graph_id)
+        graph = self.get_graph(graph_id)
 
         executor = gevent.Greenlet(graph.go)
         # FIXME: should we delete the executor from self._executors on finish?
@@ -230,7 +349,7 @@ class Runtime(object):
         if graph_id not in self._executors:
             raise ValueError('Invalid graph: {}'.format(graph_id))
 
-        graph = self._get_graph(graph_id)
+        graph = self.get_graph(graph_id)
         graph.terminate()
         executor = self._executors[graph_id]
         executor.join()
@@ -239,7 +358,7 @@ class Runtime(object):
     def set_debug(self, graph_id, debug):
         # FIXME: noflo-ui sends the network:debug command before creating a
         # graph
-        # self._get_graph(graph_id).debug = debug
+        # self.get_graph(graph_id).debug = debug
         pass
 
     # Graphs --
@@ -250,7 +369,7 @@ class Runtime(object):
                                         index=data.get('index'),
                                         kind=kind)
 
-    def _get_graph(self, graph_id):
+    def get_graph(self, graph_id):
         """
         Parameters
         ----------
@@ -267,113 +386,6 @@ class Runtime(object):
         except KeyError:
             raise RillRuntimeError('Requested graph not found')
 
-    def new_graph(self, graph_id):
-        """
-        Create a new graph.
-        """
-        self.logger.debug('Graph {}: Initializing'.format(graph_id))
-        self._graphs[graph_id] = Network()
-
-    def add_node(self, graph_id, node_id, component_id, metadata):
-        """
-        Add a component instance.
-        """
-        self.logger.debug('Graph {}: Adding node {}({})'.format(
-            graph_id, component_id, node_id))
-
-        graph = self._get_graph(graph_id)
-
-        component_class = self._component_types[component_id]['class']
-        component = graph.add_component(node_id, component_class)
-        component.metadata.update(metadata)
-
-    def remove_node(self, graph_id, node_id):
-        """
-        Destroy component instance.
-        """
-        self.logger.debug('Graph {}: Removing node {}'.format(
-            graph_id, node_id))
-
-        graph = self._get_graph(graph_id)
-        graph.remove_component(node_id)
-
-    def rename_node(self, graph_id, orig_node_id, new_node_id):
-        """
-        Rename component instance.
-        """
-        self.logger.debug('Graph {}: Renaming node {} to {}'.format(
-            graph_id, orig_node_id, new_node_id))
-
-        graph = self._get_graph(graph_id)
-        graph.rename_component(orig_node_id, new_node_id)
-
-    def set_node_metadata(self, graph_id, node_id, metadata):
-        graph = self._get_graph(graph_id)
-        component = graph.component(node_id)
-        for key, value in metadata.items():
-            if value is None:
-                metadata.pop(key)
-                component.metadata.pop(key, None)
-        component.metadata.update(metadata)
-        return component.metadata
-
-    def add_edge(self, graph_id, src, tgt):
-        """
-        Connect ports between components.
-        """
-        self.logger.debug('Graph {}: Connecting ports: {} -> {}'.format(
-            graph_id, src, tgt))
-
-        graph = self._get_graph(graph_id)
-        graph.connect(self._get_port(graph, src, kind='out'),
-                      self._get_port(graph, tgt, kind='in'))
-
-    def remove_edge(self, graph_id, src, tgt):
-        """
-        Disconnect ports between components.
-        """
-        self.logger.debug('Graph {}: Disconnecting ports: {} -> {}'.format(
-            graph_id, src, tgt))
-
-        graph = self._get_graph(graph_id)
-        graph.disconnect(self._get_port(graph, src, kind='out'),
-                         self._get_port(graph, tgt, kind='in'))
-
-    def initialize_port(self, graph_id, src, data):
-        """
-        Set the inital packet for a component inport.
-        """
-        self.logger.info('Graph {}: Setting IIP to {!r} on port {}'.format(
-            graph_id, data, src))
-
-        # FIXME: noflo-ui is sending an 'addinitial foo.IN []' even when
-        # the inport is connected
-        if data == []:
-            return
-
-        graph = self._get_graph(graph_id)
-
-        target_port = self._get_port(graph, src, kind='in')
-        # if target_port.is_connected():
-        #     graph.disconnect(target_port)
-
-        graph.initialize(data, target_port)
-
-    def uninitialize_port(self, graph_id, src):
-        """
-        Remove the initial packet for a component inport.
-        """
-        self.logger.debug('Graph {}: Removing IIP from port {}'.format(
-            graph_id, src))
-
-        graph = self._get_graph(graph_id)
-
-        target_port = self._get_port(graph, src, kind='in')
-        if target_port.is_static():
-            # FIXME: so far the case where an uninitialized port receives a uninitialize_port
-            # message is when noflo initializes the inport to [] (see initialize_port as well)
-            return graph.uninitialize(target_port)._content
-
     def get_graph_messages(self, graph_id):
         """
         Create graph protocol messages to build graph for receiver
@@ -389,7 +401,7 @@ class Runtime(object):
             list of graph protocol messages that reproduce graph
 
         """
-        net = self._get_graph(graph_id)
+        net = self.get_graph(graph_id)
         definition = net.to_dict()
         messages = [('clear', {
             'id': graph_id,
@@ -449,6 +461,122 @@ class Runtime(object):
 
         return messages
 
+    def new_graph(self, graph_id):
+        """
+        Create a new graph.
+        """
+        self.logger.debug('Graph {}: Initializing'.format(graph_id))
+        self.add_graph(graph_id, Network())
+
+    def add_graph(self, graph_id, graph):
+        """
+        Parameters
+        ----------
+        graph_id : str
+        graph : ``rill.engine.network.Network``
+        """
+        self._graphs[graph_id] = graph
+
+    def add_node(self, graph_id, node_id, component_id, metadata):
+        """
+        Add a component instance.
+        """
+        self.logger.debug('Graph {}: Adding node {}({})'.format(
+            graph_id, component_id, node_id))
+
+        graph = self.get_graph(graph_id)
+
+        component_class = self._component_types[component_id]['class']
+        component = graph.add_component(node_id, component_class)
+        component.metadata.update(metadata)
+
+    def remove_node(self, graph_id, node_id):
+        """
+        Destroy component instance.
+        """
+        self.logger.debug('Graph {}: Removing node {}'.format(
+            graph_id, node_id))
+
+        graph = self.get_graph(graph_id)
+        graph.remove_component(node_id)
+
+    def rename_node(self, graph_id, orig_node_id, new_node_id):
+        """
+        Rename component instance.
+        """
+        self.logger.debug('Graph {}: Renaming node {} to {}'.format(
+            graph_id, orig_node_id, new_node_id))
+
+        graph = self.get_graph(graph_id)
+        graph.rename_component(orig_node_id, new_node_id)
+
+    def set_node_metadata(self, graph_id, node_id, metadata):
+        graph = self.get_graph(graph_id)
+        component = graph.component(node_id)
+        for key, value in metadata.items():
+            if value is None:
+                metadata.pop(key)
+                component.metadata.pop(key, None)
+        component.metadata.update(metadata)
+        return component.metadata
+
+    def add_edge(self, graph_id, src, tgt):
+        """
+        Connect ports between components.
+        """
+        self.logger.debug('Graph {}: Connecting ports: {} -> {}'.format(
+            graph_id, src, tgt))
+
+        graph = self.get_graph(graph_id)
+        graph.connect(self._get_port(graph, src, kind='out'),
+                      self._get_port(graph, tgt, kind='in'))
+
+    def remove_edge(self, graph_id, src, tgt):
+        """
+        Disconnect ports between components.
+        """
+        self.logger.debug('Graph {}: Disconnecting ports: {} -> {}'.format(
+            graph_id, src, tgt))
+
+        graph = self.get_graph(graph_id)
+        graph.disconnect(self._get_port(graph, src, kind='out'),
+                         self._get_port(graph, tgt, kind='in'))
+
+    def initialize_port(self, graph_id, src, data):
+        """
+        Set the inital packet for a component inport.
+        """
+        self.logger.info('Graph {}: Setting IIP to {!r} on port {}'.format(
+            graph_id, data, src))
+
+        # FIXME: noflo-ui is sending an 'addinitial foo.IN []' even when
+        # the inport is connected
+        if data == []:
+            return
+
+        graph = self.get_graph(graph_id)
+
+        target_port = self._get_port(graph, src, kind='in')
+        # if target_port.is_connected():
+        #     graph.disconnect(target_port)
+
+        graph.initialize(data, target_port)
+
+    def uninitialize_port(self, graph_id, src):
+        """
+        Remove the initial packet for a component inport.
+        """
+        self.logger.debug('Graph {}: Removing IIP from port {}'.format(
+            graph_id, src))
+
+        graph = self.get_graph(graph_id)
+
+        target_port = self._get_port(graph, src, kind='in')
+        if target_port.is_static():
+            # FIXME: so far the case where an uninitialized port receives a uninitialize_port
+            # message is when noflo initializes the inport to [] (see initialize_port as well)
+            return graph.uninitialize(target_port)._content
+
 
 def create_websocket_application(runtime):
     class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
@@ -457,7 +585,10 @@ def create_websocket_application(runtime):
 
         An instance of this class sits between the websocket and the runtime.
         It receives messages over the websocket, delegates their payload to
-        the appropriate Runtime methods, and sends responses where applicable.
+        the appropriate ``Runtime`` methods, and sends responses where
+        applicable.
+
+        Message structures are defined by the FBP Protocol.
         """
         def __init__(self, ws):
             super(WebSocketRuntimeApplication, self).__init__(self)
@@ -466,6 +597,7 @@ def create_websocket_application(runtime):
                                                     self.__class__.__name__))
             self.runtime = runtime
 
+            # insert a listener
             Connection.send = add_callback(Connection.send,
                                            self.send_connection_data)
 
@@ -512,12 +644,14 @@ def create_websocket_application(runtime):
                 self.logger.warn("Malformed message")
                 return
 
+            # FIXME: use the json-schema files from FBP protocol to validate
+            # message structure
             try:
                 handler = dispatch[protocol]
             except KeyError:
                 # FIXME: send error?
                 self.logger.warn("Subprotocol '{}' "
-                              "not supported".format(protocol))
+                                 "not supported".format(protocol))
                 return
 
             try:
@@ -628,7 +762,7 @@ def create_websocket_application(runtime):
                 self.send('component', 'source', payload)
             else:
                 self.logger.warn("Unknown command '%s' for protocol '%s' " %
-                              (command, 'component'))
+                                 (command, 'component'))
 
         def handle_graph(self, command, payload):
             """
@@ -695,7 +829,8 @@ def create_websocket_application(runtime):
                 payload['metadata'] = metadata
             elif command == 'getgraph':
                 send_ack = False
-                graph_messages = self.runtime.get_graph_messages(payload['id'])
+                graph_id = payload['id']
+                graph_messages = self.runtime.get_graph_messages(graph_id)
                 for command, payload in graph_messages:
                     self.send('graph', command, payload)
             elif command == 'list':
@@ -728,16 +863,16 @@ def create_websocket_application(runtime):
             """
             def send_status(cmd, g, timestamp=True):
                 started, running = self.runtime.get_status(g)
-                payload = {
+                data = {
                     'graph': g,
                     'started': started,
                     'running': running,
                     # 'debug': True,
                 }
                 if timestamp:
-                    payload['time'] = datetime.datetime.now().isoformat()
+                    data['time'] = datetime.datetime.now().isoformat()
 
-                self.send('network', cmd, payload)
+                self.send('network', cmd, data)
                 # FIXME: hook up component logger to and output handler
                 # self.send('network', 'output', {'message': 'TEST!'})
                 # if started and running:
@@ -765,234 +900,43 @@ def create_websocket_application(runtime):
                 self.send('network', 'debug', payload)
             else:
                 self.logger.warn("Unknown command '%s' for protocol '%s'" %
-                              (command, 'network'))
+                                 (command, 'network'))
 
     return WebSocketRuntimeApplication
 
 
-class RuntimeRegistry(object):
-    """
-    Runtime registry.
-    """
-    __metaclass__ = ABCMeta
-
-    @abstractmethod
-    def register_runtime(self, runtime, runtime_id, user_id, address):
-        """
-        Registers a runtime.
-
-        Parameters
-        ----------
-        runtime : ``Runtime``
-            the Runtime to register
-        user_id : str
-            registry user ID
-        address : str
-            callback address
-        """
-        pass
-
-    def ping_runtime(self, runtime_id):
-        """
-        Pings a registered runtime, keeping it alive in the registry.
-        This should be called periodically.
-
-        Parameters
-        ----------
-        runtime_id : str
-            the id of the runtime to ping
-        """
-        pass
+DEFAULTS = {
+    'host': 'localhost',
+    'port': 3569,
+    'registry_host': 'localhost',
+    'registry_port': 8080
+}
 
 
-class FlowhubRegistry(RuntimeRegistry):
-    """
-    FlowHub runtime registry.
-    It's necessary to use this if you want to manage your graph in either
-    FlowHub or NoFlo-UI.
-    """
-    def __init__(self):
-        self.logger = logging.getLogger('%s.%s' % (self.__class__.__module__,
-                                                self.__class__.__name__))
-
-        self._endpoint = 'http://api.flowhub.io'
-
-    def runtime_url(self, runtime_id):
-        return '{}/runtimes/{}'.format(self._endpoint, runtime_id)
-
-    def register_runtime(self, runtime, runtime_id, user_id, address):
-        if not isinstance(runtime, Runtime):
-            raise ValueError('runtime must be a Runtime instance')
-
-        runtime_metadata = runtime.get_runtime_meta()
-        payload = {
-            'id': runtime_id,
-
-            'label': runtime_metadata['label'],
-            'type': runtime_metadata['type'],
-
-            'address': address,
-            'protocol': 'websocket',
-
-            'user': user_id,
-            'secret': '9129923',  # unused
-        }
-
-        self.logger.info('Registering runtime %s for user %s...' % (runtime_id, user_id))
-        response = requests.put(self.runtime_url(runtime_id),
-                                data=json.dumps(payload),
-                                headers={'Content-type': 'application/json'})
-        self._ensure_http_success(response)
-
-    def ping_runtime(self, runtime_id):
-        url = self.runtime_url(runtime_id)
-        self.logger.info('Pinging runtime {}...'.format(url))
-        response = requests.post(url)
-        self._ensure_http_success(response)
-
-    @classmethod
-    def _ensure_http_success(cls, response):
-        if not (199 < response.status_code < 300):
-            raise Exception('Flow API returned error %d: %s' %
-                            (response.status_code, response.text))
-
-
-def create_runtime_id(address, user_id=None):
-    rill_id = 'rill_' + address#.replace('/', '-')
-    if user_id:
-        return "_".join(user_id, rill_id)
-    else:
-        return rill_id
-
-
-def main():
-    # Argument defaults
-    defaults = {
-        'host': 'localhost',
-        'port': 3569,
-        'registry-host': 'localhost',
-        'registry-port': 8080
-    }
-
-    # Parse arguments
-    argp = argparse.ArgumentParser(
-        description='Runtime that responds to commands sent over the network, '
-                    'managing and executing graphs.')
-    argp.add_argument(
-        '-u', '--flowhub-user-id', metavar='UUID',
-        help='FlowHub user ID (get this from NoFlo-UI)')
-    argp.add_argument(
-        '-r', '--flowhub-runtime-id', metavar='UUID',
-        help='FlowHub unique runtime ID (generated if none specified)')
-    argp.add_argument(
-        '--host', default=defaults['host'], metavar='HOSTNAME',
-        help='Listen host for websocket (default: %(host)s)' % defaults)
-    argp.add_argument(
-        '--port', type=int, default=defaults['port'], metavar='PORT',
-        help='Listen port for websocket (default: %(port)d)' % defaults)
-    argp.add_argument(
-        '--registry-host', default=defaults['registry-host'],
-        metavar='HOSTNAME',
-        help='Listen host for registry (default: %(registry-host)s)' % defaults)
-    argp.add_argument(
-        '--registry-port', type=int, default=defaults['registry-port'],
-        metavar='PORT',
-        help='Listen port for registry (default: %(registry-port)d)' % defaults)
-    argp.add_argument(
-        '--log-file', metavar='FILE_PATH',
-        help='File to send log output to (default: none)')
-    argp.add_argument(
-        '-m', '--module', dest='modules', action='append',
-        help='Module to load')
-    argp.add_argument(
-        '-v', '--verbose', action='store_true',
-        help='Enable verbose logging')
-
-    # TODO: add arg for executor type (multiprocess, singleprocess, distributed)
-    # TODO: add args for component search paths
-    args = argp.parse_args()
-
-    # Configure logging
-    # utils.init_logger(filename=args.log_file,
-    #                   default_level=(logging.DEBUG if args.verbose else logging.INFO),
-    #                   logger_levels={
-    #                       'requests': logging.WARN,
-    #                       'geventwebsocket': logging.INFO,
-    #                       'sh': logging.WARN,
-    #
-    #                       'rill.core': logging.INFO,
-    #                       'rill.components': logging.INFO,
-    #                       'rill.executors': logging.INFO
-    #                   })
-
-    address = 'ws://{}:{:d}'.format(args.host, args.port)
-    runtime_id = args.flowhub_runtime_id
-    if not runtime_id and not args.flowhub_user_id:
-        logger.warn('No runtime ID or user ID was specified: skipping '
-                    'registration with flowhub.')
-    elif not runtime_id and args.flowhub_user_id:
-        runtime_id = create_runtime_id(address, args.flowhub_user_id)
-        logger.warn('No runtime ID was specified, so one was '
-                    'generated: {}'.format(runtime_id))
-
-    runtime = Runtime()
-
-    # FIXME: remove hard-wired imports
-    import tests.components
-    import rill.components.basic
-    import rill.components.timing
-    runtime.register_module(rill.components.basic)
-    runtime.register_module(rill.components.timing)
-    runtime.register_module(tests.components)
+def serve_runtime(runtime, host=DEFAULTS['host'], port=DEFAULTS['port'],
+                  registry_host=DEFAULTS['registry_host'],
+                  registry_port=DEFAULTS['registry_port']):
 
     def runtime_application_task():
         """
         This greenlet runs the websocket server that responds remote commands
         that inspect/manipulate the Runtime.
         """
-        print('Runtime listening at {}'.format(address))
+        print('Runtime listening at ws://{}:{:d}'.format(host, port))
         r = geventwebsocket.Resource(
             OrderedDict([('/', create_websocket_application(runtime))]))
-        s = geventwebsocket.WebSocketServer(('', args.port), r)
+        s = geventwebsocket.WebSocketServer(('', port), r)
         s.serve_forever()
-
-    def flowhub_registration_task():
-        """
-        This greenlet will register the runtime with FlowHub and occasionally
-        ping the endpoint to keep the runtime alive.
-        """
-        flowhub = FlowhubRegistry()
-
-        # Register runtime
-        flowhub.register_runtime(
-            runtime, runtime_id, args.flowhub_user_id, address)
-
-        # Ping
-        delay_secs = 60  # Ping every minute
-        while True:
-            flowhub.ping_runtime(runtime_id)
-            gevent.sleep(delay_secs)
-
 
     def local_registration_task():
         """
         This greenlet will run the rill registry to register the runtime with
         the ui.
         """
-        from rill.registry import create_routes, run_registry
-        create_routes(args.host, args.port)
-        run_registry(args.registry_host, args.registry_port)
+        from rill.registry import serve_registry
+        serve_registry(registry_host, registry_port, host, port)
 
-    tasks = [runtime_application_task]
-    if runtime_id:
-        tasks.append(flowhub_registration_task)
-    else:
-        tasks.append(local_registration_task)
+    tasks = [runtime_application_task, local_registration_task]
 
     # Start!
     gevent.wait([gevent.spawn(t) for t in tasks])
-    runtime_application_task()
-
-
-if __name__ == '__main__':
-    main()

@@ -1,5 +1,6 @@
 from rill.engine.runner import ComponentRunner
 from rill.runtime import Runtime
+from rill.engine.network import Network
 
 from tests.components import *
 
@@ -16,8 +17,8 @@ def test_get_graph_messages():
     runtime = Runtime()
     runtime.new_graph(graph_id)
 
-    net = runtime._get_graph(graph_id)
-    net.name = graph_name
+    net = Network(name=graph_name)
+    runtime.add_graph(graph_id, net)
 
     gen = net.add_component('Generate', GenerateTestData)
     gen.metadata['x'] = 5

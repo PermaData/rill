@@ -1,11 +1,15 @@
 """
 Server to register rill with ui
+
+A UI can interact with many runtimes.  The registry provides a single resource
+to query all registered runtimes.
 """
 
 from bottle import route, request, response, run
 from urlparse import urlparse
 from datetime import datetime
 import json
+
 
 def create_routes(host, port):
     """
@@ -16,7 +20,7 @@ def create_routes(host, port):
         """
         Get data about rill runtime
         """
-        from rill.runtime import Runtime, create_runtime_id
+        from rill.runtime import Runtime
 
         response.set_header('Access-Control-Allow-Origin', '*')
         response.set_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
@@ -36,24 +40,27 @@ def create_routes(host, port):
         runtime_meta = runtime.get_runtime_meta()
         runtime_meta['address'] = address = 'ws://{}:{}'.format(host, port)
         runtime_meta['protocol'] = 'websocket'
-        runtime_meta['id'] = create_runtime_id(
-            urlparse(address).netloc)
+        runtime_meta['id'] = 'rill_' + urlparse(address).netloc
         runtime_meta['seen'] = str(datetime.now())
         return json.dumps([runtime_meta])
 
-def run_registry(host, port, **kwargs):
+
+def serve_registry(registry_host, registry_port, runtime_host, runtime_port,
+                   **kwargs):
     """
-    Define registry routes
+    Run the runtime registry http process.
 
     Parameters
     ----------
-    host : str
-    port : int
+    registry_host : str
+    registry_port : int
+    runtime_host : str
+    runtime_port : int
     """
 
-    print('registry running at {}:{}'.format(host, port))
-    run(host=host, port=port, **kwargs)
+    print('registry running at {}:{}'.format(registry_host, registry_port))
+    create_routes(runtime_host, runtime_port)
+    run(host=registry_host, port=registry_port, **kwargs)
 
 if __name__ == "__main__":
-    create_routes('localhost', '3569')
-    run_registry('localhost', '8080')
+    serve_registry('localhost', 8080, 'localhost', 3569)

@@ -29,6 +29,7 @@ class Component(with_metaclass(ABCMeta, object)):
     outport_definitions = []
     _self_starting = False
     _must_run = False
+    type_name = None
     hidden = False
 
     # same as module-level logger, but provided here for convenience
@@ -151,7 +152,6 @@ class Component(with_metaclass(ABCMeta, object)):
         from rill.engine.subnet import SubNet
 
         return {
-            'name': '{0}/{1}'.format(cls.__module__, cls.__name__),
             'description': textwrap.dedent(cls.__doc__ or '').strip(),
             #'icon': '',
             'subgraph': issubclass(cls, SubNet),
