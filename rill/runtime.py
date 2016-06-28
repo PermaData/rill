@@ -7,6 +7,8 @@ import inspect
 import functools
 import traceback
 import datetime
+import weakref
+from functools import wraps
 
 import gevent
 import geventwebsocket
@@ -34,10 +36,24 @@ def add_callback(f, callback):
     """
     Wrap the callable ``f`` to first execute callable ``callback``
     """
-    def wrapper(*args, **kwargs):
-        callback(*args, **kwargs)
-        return f(*args, **kwargs)
-    return wrapper
+    if not hasattr(f, '_callbacks'):
+        # undecorated function: decorate it
+        callbacks = weakref.WeakValueDictionary()
+        callbacks[0] = callback
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            for k in sorted(callbacks.keys()):
+                cb = callbacks[k]
+                cb(*args, **kwargs)
+            return f(*args, **kwargs)
+        wrapper._callbacks = callbacks
+        return wrapper
+    else:
+        # already decorated function: add the callback function
+        keys = f._callbacks.keys()
+        key = max(keys) if keys else 0
+        f._callbacks[key] = callback
+        return f
 
 
 def expandpath(p):
@@ -226,13 +242,14 @@ class Runtime(object):
     # Components --
 
     def get_all_component_specs(self):
-        specs = {}
-        for component_name, component_options in self._component_types.iteritems():
-            specs[component_name] = component_options['spec']
+        """
+        Returns
+        -------
+        List[Dict[str, Any]]
+        """
+        return [data['spec'] for data in self._component_types.itervalues()]
 
-        return specs
-
-    def register_component(self, component_class, collection, overwrite=False):
+    def register_component(self, component_class, overwrite=False):
         """
         Register a component class.
 
@@ -250,8 +267,7 @@ class Runtime(object):
                              'from Component')
 
         spec = component_class.get_spec()
-        name = component_class.type_name or component_class.__name__
-        spec['name'] = '{0}/{1}'.format(collection, name)
+        name = spec['name']
 
         if name in self._component_types and not overwrite:
             raise ValueError("Component {0} already registered".format(name))
@@ -282,8 +298,6 @@ class Runtime(object):
         self.logger.info('Registering components in module: {}'.format(
             module.__name__))
 
-        # collection = getattr(module, 'COLLECTION_NAME', module.__name__)
-        collection = module.__name__
         registered = 0
         for obj_name, class_obj in inspect.getmembers(module):
             if (inspect.isclass(class_obj) and
@@ -291,7 +305,7 @@ class Runtime(object):
                     not inspect.isabstract(class_obj) and
                     not issubclass(class_obj, SubNet) and
                     issubclass(class_obj, Component)):
-                self.register_component(class_obj, collection, overwrite)
+                self.register_component(class_obj, overwrite)
                 registered += 1
 
         if registered == 0:
@@ -397,69 +411,65 @@ class Runtime(object):
 
         Return
         ------
-        messages : list
-            list of graph protocol messages that reproduce graph
+        Iterator[Dict[str, Any]]
+            graph protocol messages that reproduce graph
 
         """
         net = self.get_graph(graph_id)
         definition = net.to_dict()
-        messages = [('clear', {
+        yield ('clear', {
             'id': graph_id,
             'name': net.name
-        })]
+        })
+
+        def port_msg(p):
+            msg = {
+                'node': p['process'],
+                'port': p['port']
+            }
+            index = p.get('index', None)
+            if index is not None:
+                msg['index'] = index
+            return msg
+
         for node_id, node in definition['processes'].items():
-            messages.append(('addnode', {
+            yield ('addnode', {
                 'graph': graph_id,
                 'id': node_id,
                 'component': node['component'],
                 'metadata': node['metadata']
-            }))
+            })
         for edge in definition['connections']:
             payload = {
                 'graph': graph_id,
-                'tgt': {
-                    'node': edge['tgt']['process'],
-                    'port': edge['tgt']['port']
-                }
+                'tgt': port_msg(edge['tgt'])
             }
-
-            tgt_index = edge['tgt'].get('index', None)
-            if tgt_index:
-                payload['tgt']['index'] = tgt_index
 
             src = edge.get('src', None)
             if src:
                 command = 'addedge'
-                payload['src'] = {
-                    'node': src['process'],
-                    'port': src['port']
-                }
-                src_index = src.get('index', None)
-                if src_index:
-                    payload['src']['index'] = src_index
+                payload['src'] = port_msg(src)
             else:
                 command = 'addinitial'
                 payload['data'] = edge['data']
 
-            messages.append((command, payload))
+            yield (command, payload)
 
         for public_port, inner_port in definition['inports'].items():
-            messages.append(('addinport', {
+            yield ('addinport', {
                 'graph': graph_id,
                 'public': public_port,
                 'node': inner_port['process'],
                 'port': inner_port['port']
-            }))
+            })
 
         for public_port, inner_port in definition['outports'].items():
-            messages.append(('addoutport', {
+            yield ('addoutport', {
                 'graph': graph_id,
                 'public': public_port,
                 'node': inner_port['process'],
                 'port': inner_port['port']
-            }))
-
-        return messages
+            })
 
     def new_graph(self, graph_id):
         """
@@ -737,10 +747,8 @@ def create_websocket_application(runtime):
             payload : dict
             """
             if command == 'list':
-                specs = self.runtime.get_all_component_specs()
-                for component_name, component_data in specs.iteritems():
-                    payload = component_data
-                    self.send('component', 'component', payload)
+                for spec in self.runtime.get_all_component_specs():
+                    self.send('component', 'component', spec)
 
                 self.send('component', 'componentsready', None)
             # Get source code for component

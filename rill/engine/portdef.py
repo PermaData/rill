@@ -128,6 +128,8 @@ class InputPortDefinition(PortDefinition):
         spec = super(InputPortDefinition, self).get_spec()
         if self.default is not NOT_SET:
             spec['default'] = self.type.to_primitive(self.default)
+        if self.name == IN_NULL:
+            spec['type'] = 'bang'
         return spec
 
 
@@ -160,4 +162,6 @@ class OutputPortDefinition(PortDefinition):
     def get_spec(self):
         spec = super(OutputPortDefinition, self).get_spec()
         spec.pop('values', None)
+        if self.name == OUT_NULL:
+            spec['type'] = 'bang'
         return spec

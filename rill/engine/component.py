@@ -153,6 +153,7 @@ class Component(with_metaclass(ABCMeta, object)):
         from rill.engine.subnet import SubNet
 
         return {
+            'name': cls.get_type(),
             'description': textwrap.dedent(cls.__doc__ or '').strip(),
             #'icon': '',
             'subgraph': issubclass(cls, SubNet),
@@ -480,8 +481,8 @@ class Component(with_metaclass(ABCMeta, object)):
         -------
         str
         """
-        return '{0}/{1}'.format(cls.__module__,
-                                cls.__name__)
+        name = cls.type_name or cls.__name__
+        return '{0}/{1}'.format(cls.__module__, name)
 
 
 class _FunctionComponent(with_metaclass(ABCMeta, Component)):

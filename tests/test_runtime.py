@@ -8,6 +8,7 @@ import logging
 ComponentRunner.logger.setLevel(logging.DEBUG)
 
 
+# FIXME: create a fixture for the network in test_network_serialization and use that here
 def test_get_graph_messages():
     """
     Test that runtime can build graph with graph protocol messages
@@ -33,7 +34,7 @@ def test_get_graph_messages():
     net.export('Pass.OUT', 'OUTPORT')
     net.export('Outside.IN', 'INPORT')
 
-    messages = runtime.get_graph_messages(graph_id)
+    messages = list(runtime.get_graph_messages(graph_id))
     assert ('clear', {
         'id': graph_id,
         'name': graph_name
