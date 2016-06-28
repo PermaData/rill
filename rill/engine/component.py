@@ -5,7 +5,8 @@ from abc import ABCMeta, abstractmethod
 
 from future.utils import with_metaclass
 
-from rill.engine.port import PortCollection, flatten_arrays, is_null_port
+from rill.engine.port import (PortCollection, flatten_arrays, is_null_port,
+                              IN_NULL, OUT_NULL)
 from rill.engine.packet import Packet, Chain
 from rill.engine.exceptions import FlowError, ComponentError
 from rill.engine.utils import LogFormatter
@@ -20,8 +21,8 @@ _logger.setLevel(logging.DEBUG)
 logger = LogFormatter(_logger, {})
 
 
-@inport('IN_NULL')
-@outport('OUT_NULL')
+@inport(IN_NULL)
+@outport(OUT_NULL)
 class Component(with_metaclass(ABCMeta, object)):
     # type: List[rill.engine.portdef.InputPortDefinition]
     _inport_definitions = []
@@ -189,7 +190,7 @@ class Component(with_metaclass(ABCMeta, object)):
         ``rill.engine.inputport.InputPort``
         """
         for port in flatten_arrays(self.ports):
-            if port.kind == 'in' and not is_null_port(port):
+            if port.kind == 'in':
                 yield port
 
     @property
@@ -202,7 +203,7 @@ class Component(with_metaclass(ABCMeta, object)):
         ``rill.engine.inputport.OutputPort``
         """
         for port in flatten_arrays(self.ports):
-            if port.kind == 'out' and not is_null_port(port):
+            if port.kind == 'out':
                 yield port
 
     def port(self, port_name, kind=None):

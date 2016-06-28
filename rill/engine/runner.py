@@ -8,6 +8,7 @@ from termcolor import colored
 from rill.engine.utils import LogFormatter
 from rill.engine.status import StatusValues
 from rill.engine.exceptions import FlowError, ComponentError
+from rill.engine.port import OUT_NULL, IN_NULL
 
 
 class ComponentRunner(Greenlet):
@@ -35,9 +36,9 @@ class ComponentRunner(Greenlet):
         self._lock = RLock()
         self._can_go = Condition(self._lock)
 
-        # the automatic input port named "NULL"
+        # the "automatic" input port
         self._null_input = None
-        # the automatic output port named "NULL"
+        # the "automatic" output port
         self._null_output = None
 
         self.network = component.network
@@ -226,8 +227,8 @@ class ComponentRunner(Greenlet):
             self.trace_locks("input states - acquired")
             with self._lock:
                 while True:
-                    conns = [c._connection for c in self.component.inports
-                             if c.is_connected()]
+                    conns = [inp._connection for inp in self.component.inports
+                             if inp.is_connected() and not inp.is_null()]
                     all_drained = all(c.is_drained() for c in conns)
                     has_data = any(not c.is_empty() for c in conns)
 
@@ -258,11 +259,12 @@ class ComponentRunner(Greenlet):
 
             self.status = StatusValues.ACTIVE
             self.trace_funcs("Started")
-            if self.component.ports.IN_NULL.is_connected():
-                self._null_input = self.component.ports.IN_NULL
+            if self.component.ports[IN_NULL].is_connected():
+                self._null_input = self.component.ports[IN_NULL]
+                # block here until null input receives a packet
                 self._null_input.receive_once()
-            if self.component.ports.OUT_NULL.is_connected():
-                self._null_output = self.component.ports.OUT_NULL
+            if self.component.ports[OUT_NULL].is_connected():
+                self._null_output = self.component.ports[OUT_NULL]
 
             self_started = self.self_starting
 
@@ -279,9 +281,9 @@ class ComponentRunner(Greenlet):
                 if self.is_terminated() or self.has_error():
                     break
 
-                for value in self.component.inports:
-                    if value.is_static():
-                        value.open()
+                for inp in self.component.inports:
+                    if inp.is_static() and not inp.is_null():
+                        inp.open()
 
                 self.trace_funcs(colored("Activated", attrs=['bold']))
 
@@ -301,9 +303,9 @@ class ComponentRunner(Greenlet):
                 # - is_all_drained only checks Connections.
                 # - tests succeed if we simply hard-wire InitializationConnection to always open
                 # - it ensures that it yields a new result when component is re-activated
-                for ip in self.component.inports:
-                    if ip.is_static():
-                        ip.close()
+                for inp in self.component.inports:
+                    if inp.is_static() and not inp.is_null():
+                        inp.close()
                         # if (not icp.is_closed()):
                         #  raise FlowError("Component deactivated with IIP port not closed: " + self.get_name())
                         #

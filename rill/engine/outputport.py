@@ -3,7 +3,7 @@ from abc import ABCMeta, abstractmethod
 from future.utils import with_metaclass
 
 from rill.engine.port import (Port, ArrayPort, BasePortCollection,
-                              PortInterface)
+                              PortInterface, OUT_NULL)
 from rill.engine.packet import Packet
 
 
@@ -68,6 +68,9 @@ class OutputPort(Port, OutputInterface):
         bool
         """
         return self._is_closed
+
+    def is_null(self):
+        return self.name == OUT_NULL
 
     def send(self, packet):
         """

@@ -65,7 +65,7 @@ def test_subnet_decorator():
         sub.export('Tail.OUT', 'OUT')
 
     assert issubclass(DecoratedPassNet, SubNet)
-    assert DecoratedPassNet.inport_definitions[0].description == 'an input'
+    assert DecoratedPassNet._inport_definitions[0].description == 'an input'
 
     net = Network()
 

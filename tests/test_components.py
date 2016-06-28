@@ -11,6 +11,7 @@ from rill.engine.network import Network, apply_network
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import InputPort, InputArray
 from rill.engine.runner import ComponentRunner
+from rill.engine.port import is_null_port, OUT_NULL, IN_NULL
 from rill.engine.component import Component
 from rill.decorators import inport, outport, component, subnet
 
@@ -50,8 +51,8 @@ requires_patch = pytest.mark.skipif(not is_patched,
 #     - what about NULL ports. do they fire once or multiple times?
 
 
-def names(ports):
-    return [x.name for x in ports]
+def names(ports, include_null=False):
+    return [x.name for x in ports if include_null or not is_null_port(x)]
 
 
 def run(network, *pairs):
@@ -158,19 +159,20 @@ def test_component_with_inheritance():
     @inport('IN')
     @outport('OUT')
     class A(Component):
-        def execute(self, IN, OPT, OUT):
+        def execute(self):
             pass
 
     @inport('OPT', type=int)
     class B(A):
         pass
 
-    assert names(B.port_definitions()) == ['IN_NULL', 'IN', 'OPT', 'OUT_NULL',
-                                           'OUT']
+    assert names(B.port_definitions(), include_null=True) == [
+        IN_NULL, 'IN', 'OPT', OUT_NULL, 'OUT']
 
     net = Network()
     b = net.add_component('b', B)
-    assert names(b.inports) == ['IN', 'OPT']
+    assert names(b.ports, include_null=True) == [
+        IN_NULL, 'IN', 'OPT', OUT_NULL, 'OUT']
 
 
 @pytest.mark.xfail(is_patched, reason='order is ACB instead of ABC')
@@ -435,12 +437,12 @@ def test_null_ports(net, tmpdir, discard):
     """null ports ensure proper ordering of components"""
     tempfile = str(tmpdir.join('data.txt'))
     net.add_component("Generate", GenerateTestData, COUNT=5)
-    net.add_component("Write", WriteLines, FILEPATH=tempfile)
-    net.add_component("Read", ReadLines, FILEPATH=tempfile)
+    write = net.add_component("Write", WriteLines, FILEPATH=tempfile)
+    read = net.add_component("Read", ReadLines, FILEPATH=tempfile)
     dis = net.add_component("Discard", discard)
 
     net.connect("Generate.OUT", "Write.IN")
-    net.connect("Write.OUT_NULL", "Read.IN_NULL")
+    net.connect(write.port(OUT_NULL), read.port(IN_NULL))
     net.connect("Read.OUT", "Discard.IN")
     net.go()
 
@@ -455,8 +457,8 @@ def test_null_ports2(net, tmpdir, discard):
     net.add_component("FileNames", GenerateTestData, COUNT=2)
     net.add_component("Prefix", Prefix, PRE=str(tmpdir.join('file.')))
     net.add_component("Replicate", Replicate)
-    net.add_component("Write", Write)
-    net.add_component("Read", ReadLines)
+    write = net.add_component("Write", Write)
+    read = net.add_component("Read", ReadLines)
 
     dis = net.add_component("Discard", discard)
 
@@ -470,7 +472,7 @@ def test_null_ports2(net, tmpdir, discard):
     # each file written, instead of Write.NULL which sends after all files are
     # written, but we use the latter because it reveals an interesting deadlock
     # issue with Replicate (see notes in that component for more info)
-    net.connect("Write.OUT_NULL", "Read.IN_NULL")
+    net.connect(write.port(OUT_NULL), read.port(IN_NULL))
     net.connect("Read.OUT", "Discard.IN")
     net.go()
 

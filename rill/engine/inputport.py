@@ -5,7 +5,7 @@ from future.utils import with_metaclass
 
 from rill.engine.status import StatusValues
 from rill.engine.port import (Port, ArrayPort, BasePortCollection,
-                              PortInterface)
+                              PortInterface, IN_NULL)
 from rill.engine.exceptions import FlowError
 from rill.utils import NOT_SET
 
@@ -164,6 +164,9 @@ class InputPort(Port, InputInterface):
         return self.is_connected() and \
                isinstance(self._connection, InitializationConnection)
 
+    def is_null(self):
+        return self.name == IN_NULL
+
     def receive(self):
         if self.is_connected():
             p = self._connection.receive()
@@ -172,6 +175,9 @@ class InputPort(Port, InputInterface):
                 return p
 
     def initialize(self, static_value):
+        if self.is_null():
+            raise FlowError(
+                "Cannot initialize null port: {}".format(self))
         if self.is_connected():
             if self.is_static():
                 raise FlowError(
@@ -192,6 +198,10 @@ class InputPort(Port, InputInterface):
         ``InitializationConnection``
             The removed initialization connection
         """
+        if self.is_null():
+            raise FlowError(
+                "Cannot uninitialize null port: {}".format(self))
+
         if not self.is_static():
             raise FlowError(
                 "Port is not initialized: {}".format(self))

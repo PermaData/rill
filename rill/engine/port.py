@@ -4,13 +4,13 @@ from collections import OrderedDict, Counter
 from future.utils import with_metaclass
 from future.utils import raise_from
 
-from rill.engine.exceptions import FlowError
+from rill.engine.portdef import IN_NULL, OUT_NULL
 
 
 def is_null_port(port):
-    if port.kind == 'in' and port.name == 'IN_NULL':
+    if port.kind == 'in' and port.name == IN_NULL:
         return True
-    elif port.kind == 'out' and port.name == 'OUT_NULL':
+    elif port.kind == 'out' and port.name == OUT_NULL:
         return True
     return False
 
@@ -181,6 +181,10 @@ class Port(BasePort):
         bool
         """
         return self._connection is not None
+
+    @abstractmethod
+    def is_null(self):
+        raise NotImplementedError
 
 
 class PortContainerMixin(with_metaclass(ABCMeta, object)):

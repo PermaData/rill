@@ -3,6 +3,9 @@ import itertools
 
 from rill.utils import NOT_SET
 
+IN_NULL = 'wait'
+OUT_NULL = 'done'
+
 
 class PortDefinition(object):
     """

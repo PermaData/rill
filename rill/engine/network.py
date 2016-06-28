@@ -13,6 +13,7 @@ from past.builtins import basestring
 from rill.engine.exceptions import FlowError, NetworkDeadlock
 from rill.engine.runner import ComponentRunner
 from rill.engine.component import Component, logger
+from rill.engine.port import is_null_port
 from rill.engine.status import StatusValues
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import Connection, InputPort, InputArray, InitializationConnection
@@ -135,7 +136,10 @@ class Network(object):
         self.put_component(name, comp)
 
         for name, value in initializations.items():
-            self.initialize(value, comp.port(name))
+            receiver = comp.port(name, kind='in')
+            if value is None and not receiver.required:
+                continue
+            self.initialize(value, receiver)
         return comp
 
     def remove_component(self, name):
@@ -268,11 +272,6 @@ class Network(object):
         receiver : ``rill.engine.inputport.InputPort`` or str
         """
         inport = self.get_component_port(receiver, kind='in')
-
-        if inport.name == 'IN_NULL':
-            raise FlowError(
-                "Cannot initialize null port: {}".format(inport))
-
         inport.initialize(content)
 
     def uninitialize(self, receiver):
@@ -284,11 +283,6 @@ class Network(object):
         receiver : ``rill.engine.inputport.InputPort`` or str
         """
         inport = self.get_component_port(receiver, kind='in')
-
-        if inport.name == 'IN_NULL':
-            raise FlowError(
-                "Cannot uninitialize null port: {}".format(inport))
-
         return inport.uninitialize()
 
     def go(self, resume=False):

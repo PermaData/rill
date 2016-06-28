@@ -295,9 +295,9 @@ class SubNet(with_metaclass(ABCMeta, Component)):
         self.sub_network.initiate()
         # activate_all()
         self.sub_network.wait_for_all()
-        for ip in self.inports:
-            if ip.is_static():
-                ip.close()
+        for inp in self.inports:
+            if inp.is_static() and not inp.is_null():
+                inp.close()
 
         # Iterator allout = (outports.values()).iterator()
         # while (allout.has_next()):
