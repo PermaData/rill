@@ -4,6 +4,36 @@ import inspect
 from kids.cache import cache
 
 
+class classproperty(object):
+    """
+    Class for creating properties for un-initialized classes. Works like a
+    combination of the classmethod and property decorators.
+
+    Note that it is NOT possible to overwrite the "setter" for a classproperty,
+    and any attempt to assign to the class property will, in fact, simply
+    replace the classproperty object with the new value.
+
+    Decorated methods will be callable at the class-instance level.
+
+    Examples
+    --------
+    >>> class MyClass(object):
+    ...     @classproperty
+    ...     def someMethod(cls):
+    ...         return 123
+    >>> MyClass.someMethod
+    123
+    """
+    def __init__(self, getter, doc=None):
+        if doc is None and hasattr(getter, "__doc__"):
+            doc = getter.__doc__
+        self.getter = getter
+        self.__doc__ = doc
+
+    def __get__(self, instance, owner):
+        return self.getter(owner)
+
+
 class NOT_SET(object):
     pass
 

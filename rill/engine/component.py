@@ -9,7 +9,7 @@ from rill.engine.port import PortCollection, flatten_arrays, is_null_port
 from rill.engine.packet import Packet, Chain
 from rill.engine.exceptions import FlowError, ComponentError
 from rill.engine.utils import LogFormatter
-from rill.utils import cache
+from rill.utils import cache, classproperty
 from rill.decorators import inport, outport
 
 
@@ -23,10 +23,10 @@ logger = LogFormatter(_logger, {})
 @inport('IN_NULL')
 @outport('OUT_NULL')
 class Component(with_metaclass(ABCMeta, object)):
-    # list[rill.engine.portdef.InputPortDefinition]:
-    inport_definitions = []
-    # list[rill.engine.portdef.OutputPortDefinition]:
-    outport_definitions = []
+    # type: List[rill.engine.portdef.InputPortDefinition]
+    _inport_definitions = []
+    # type: List[rill.engine.portdef.OutputPortDefinition]
+    _outport_definitions = []
     _self_starting = False
     _must_run = False
     type_name = None
@@ -250,12 +250,20 @@ class Component(with_metaclass(ABCMeta, object)):
 
         return port
 
+    @classproperty
+    def inport_definitions(cls):
+        return inport.get_inherited(cls)
+
+    @classproperty
+    def outport_definitions(cls):
+        return outport.get_inherited(cls)
+
     @classmethod
     def port_definitions(cls):
         # FIXME: make this better.
         # - use OrderedDict
         # - don't use annotation classes to do the inheritance work (use super)
-        return inport.get_inherited(cls) + outport.get_inherited(cls)
+        return cls.inport_definitions + cls.outport_definitions
 
     def error(self, msg, errtype=FlowError):
         raise errtype("{}: {}".format(self, msg))

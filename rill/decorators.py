@@ -8,13 +8,13 @@ __all__ = ['inport', 'outport', 'must_run', 'self_starting', 'component', 'subne
 
 class inport(ProxyAnnotation):
     multi = True
-    attribute = 'inport_definitions'
+    attribute = '_inport_definitions'
     proxy_type = InputPortDefinition
 
 
 class outport(ProxyAnnotation):
     multi = True
-    attribute = 'outport_definitions'
+    attribute = '_outport_definitions'
     proxy_type = OutputPortDefinition
 
 

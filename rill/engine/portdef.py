@@ -9,7 +9,7 @@ class PortDefinition(object):
     Used to store the properties of a port while defining a component class,
     prior to instantiation of the component and the ports themselves.
     """
-    _kind = None
+    kind = None
     __slots__ = ('array', 'name', 'type', 'required', 'description',
                  'fixed_size')
 
@@ -83,15 +83,11 @@ class PortDefinition(object):
             'required': self.required,
         }
         spec.update(self.type.get_spec())
-
         return spec
 
 
 class InputPortDefinition(PortDefinition):
-    """
-    Decorator to add an input port to a component.
-    """
-    _kind = 'input'
+    kind = 'in'
     __slots__ = ('static', 'default')
 
     def __init__(self, name, type=None, array=False, fixed_size=None,
@@ -133,10 +129,7 @@ class InputPortDefinition(PortDefinition):
 
 
 class OutputPortDefinition(PortDefinition):
-    """
-    Decorator to add an output port to a component.
-    """
-    _kind = 'output'
+    kind = 'out'
     __slots__ = ()
 
     def get_port_type(self):
