@@ -157,7 +157,8 @@ class Port(BasePort):
         if self.type is not None:
             try:
                 conformed = self.type.validate(packet_content)
-            except Exception as err:
+            except PacketValidationError as err:
+                # catch and re-raise to provide port name in error message
                 raise FlowError(
                     "{} found invalid type: {}".format(self, err))
             else:

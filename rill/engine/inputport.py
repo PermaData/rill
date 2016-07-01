@@ -229,7 +229,7 @@ class InputPort(Port, InputInterface):
         return self.is_closed() and self.upstream_count() == 0
 
 
-class ConnectionInterface(with_metaclass(ABCMeta, object)):
+class BaseConnection(with_metaclass(ABCMeta, object)):
     def send(self, packet, outport):
         raise NotImplementedError
 
@@ -250,7 +250,6 @@ class ConnectionInterface(with_metaclass(ABCMeta, object)):
         ``rill.engine.runner.ComponentRunner``
         """
         return self.outport.component._runner
-
 
     @abstractmethod
     def receive(self):

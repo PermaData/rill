@@ -24,6 +24,14 @@ from rill.engine.exceptions import FlowError
 logger = logging.getLogger(__name__)
 _initialized = False
 
+# here as a constant so they can be used in both serve_runtime and the CLI
+DEFAULTS = {
+    'host': 'localhost',
+    'port': 3569,
+    'registry_host': 'localhost',
+    'registry_port': 8080
+}
+
 
 class RillRuntimeError(FlowError):
     pass
@@ -748,7 +756,7 @@ def create_websocket_application(runtime):
 
             else:
                 self.logger.warn("Unknown command '%s' for protocol '%s' " %
-                              (command, 'runtime'))
+                                 (command, 'runtime'))
 
         def handle_component(self, command, payload):
             """
@@ -877,7 +885,7 @@ def create_websocket_application(runtime):
 
             else:
                 self.logger.warn("Unknown command '%s' for protocol '%s'" %
-                              (command, 'graph'))
+                                 (command, 'graph'))
                 return
 
             # For any message we respected, send same in return as
@@ -936,14 +944,6 @@ def create_websocket_application(runtime):
                                  (command, 'network'))
 
     return WebSocketRuntimeApplication
-
-
-DEFAULTS = {
-    'host': 'localhost',
-    'port': 3569,
-    'registry_host': 'localhost',
-    'registry_port': 8080
-}
 
 
 def serve_runtime(runtime, host=DEFAULTS['host'], port=DEFAULTS['port'],

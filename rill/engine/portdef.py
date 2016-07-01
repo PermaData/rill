@@ -65,9 +65,9 @@ class PortDefinition(object):
         """
         if self.fixed_size is not None and not self.array:
             raise ValueError(
-                "{}.{}: @{} specified fixed_size but not array".format(
+                "{}.{}: @{}port specified fixed_size but not array=True".format(
                     self, self.name,
-                    self.__class__.__name__))
+                    self.kind))
         ptype = self.get_port_type()
         return ptype(component, **self.data)
 

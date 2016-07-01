@@ -27,10 +27,13 @@ def Replicate(IN, OUT):
             if IN.is_drained():
                 # this is here to avoid a deadlock with connections with a
                 # capacity of 1:
-                # one element port delivers its packet, but the receiver can't
-                # consume it until it receives a packet from a subsequent
-                # element port, so the send blocks which prevetns the loop
-                # through element ports from progressing. Deadlock.
+                # - we enter the `for outport in OUT` loop above
+                # - `outport.send() is called
+                # - the receiver can't consume it yet because e.g. it must first
+                #   receive a packet from a subsequent element port on this
+                #   component
+                # - the send blocks which prevents the loop through element
+                #   ports (above) from progressing. Deadlock.
                 # To solve it, we close element ports as soon as possible to
                 # indicate to the receiver to move on, and thus allow the loop
                 # here to continue.
