@@ -695,7 +695,7 @@ class Network(object):
         return definition
 
     @classmethod
-    def from_dict(cls, definition, components):
+    def from_dict(cls, definition, component_lookup=None):
         """
         Create network from serialized definition
 
@@ -703,29 +703,40 @@ class Network(object):
         ----------
         definition : dict
             network structure according to fbp json standard
-        components : dict[str, ``rill.enginge.component.Component``]
+        component_lookup : dict[str, ``rill.enginge.component.Component``]
             maps of component name to component
 
         Returns
         -------
         net : ``rill.enginge.network.Network``
         """
+        import pydoc
+
         def _port(p):
             return net.get_component_port((p['process'], p['port']),
                                           index=p.get('index', None))
 
         net = cls()
         for (name, spec) in definition['processes'].items():
-            component = net.add_component(name, components[spec['component']])
+            if component_lookup:
+                comp_class = component_lookup[spec['component']]
+            else:
+                comp_class = pydoc.locate(spec['component'].replace('/', '.'))
+                if comp_class is None:
+                    raise FlowError("Could not find component {}".format(
+                        spec['component']))
+            component = net.add_component(name, comp_class)
             if spec.get('metadata'):
                 component.metadata.update(spec['metadata'])
 
         for connection in definition['connections']:
             tgt = _port(connection['tgt'])
             if 'src' in connection:
+                # connection
                 src = _port(connection['src'])
                 net.connect(src, tgt)
             else:
+                # static initializer
                 content = connection['data']
                 content = tgt.type.to_native(content)
                 net.initialize(content, tgt)
