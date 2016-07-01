@@ -261,6 +261,8 @@ class Network(object):
         inport._connection.outports.remove(outport)
         if not inport._connection.outports:
             inport._connection = None
+        else:
+            inport._connection.metadata.pop(outport)
 
     def initialize(self, content, receiver):
         """
@@ -651,15 +653,19 @@ class Network(object):
                 if not inport.is_connected():
                     continue
 
-                if isinstance(inport._connection, InitializationConnection):
-                    content = inport._connection._content
+                conn = inport._connection
+                if isinstance(conn, InitializationConnection):
+                    content = conn._content
                     content = inport.type.to_primitive(content)
-                    definition['connections'].append({
+                    connection = {
                         'data': content,
                         'tgt': portdef(comp_name, inport)
-                    })
+                    }
+                    if conn.metadata:
+                        connection['metadata'] = conn.metadata
+                    definition['connections'].append(connection)
                 else:
-                    for outport in inport._connection.outports:
+                    for outport in conn.outports:
                         if outport.component.hidden:
                             continue
 
@@ -668,6 +674,10 @@ class Network(object):
                             'src': portdef(sender.get_name(), outport),
                             'tgt': portdef(comp_name, inport)
                         }
+                        # keyed on outport
+                        metadata = conn.metadata.get(outport, None)
+                        if metadata:
+                            connection['metadata'] = metadata
                         definition['connections'].append(connection)
 
         for (name, inport) in self.inports.items():

@@ -20,10 +20,34 @@ TYPE_MAP = {
     dict: 'object',
     list: 'array',
     tuple: 'array',
-    #color
-    #date
-    #function
-    #buffer
+    # color
+    # date
+    # function
+    # buffer
+}
+
+FBP_TYPES = {
+    'any': {
+        'color_id': 0
+    },
+    'string': {
+        'color_id': 1
+    },
+    'boolean': {
+        'color_id': 2
+    },
+    'int': {
+        'color_id': 3
+    },
+    'number': {
+        'color_id': 3
+    },
+    'object': {
+        'color_id': 4
+    },
+    'array': {
+        'color_id': 4
+    },
 }
 
 
@@ -155,7 +179,7 @@ class BasicTypeHandler(TypeHandler):
     the types are expected to be json-serializable.
     """
     def get_spec(self):
-        return {'type': TYPE_MAP.get(self.type_def, 'object')}
+        return {'type': TYPE_MAP.get(self.type_def, 'any')}
 
     def validate(self, value):
         if isinstance(value, self.type_def):
@@ -210,7 +234,7 @@ class SchematicsTypeHandler(TypeHandler):
 
     def get_spec(self):
         # FIXME: warn if primitive_type is not set?
-        spec = {'type': TYPE_MAP.get(self.type_def.primitive_type, str)}
+        spec = {'type': TYPE_MAP.get(self.type_def.primitive_type, 'any')}
         choices = self.type_def.choices
         if choices:
             spec['values'] = [self.to_primitive(c) for c in choices]

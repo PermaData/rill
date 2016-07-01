@@ -18,6 +18,7 @@ from rill.engine.component import Component
 from rill.engine.inputport import Connection
 from rill.engine.network import Network
 from rill.engine.subnet import SubNet
+from rill.engine.types import FBP_TYPES
 from rill.engine.exceptions import FlowError
 
 logger = logging.getLogger(__name__)
@@ -417,20 +418,15 @@ class Runtime(object):
         """
         net = self.get_graph(graph_id)
         definition = net.to_dict()
+        # FIXME: the schema of to_dict is *very* similar to the messages. just
+        # a few key changes
         yield ('clear', {
             'id': graph_id,
             'name': net.name
         })
 
         def port_msg(p):
-            msg = {
-                'node': p['process'],
-                'port': p['port']
-            }
-            index = p.get('index', None)
-            if index is not None:
-                msg['index'] = index
-            return msg
+            p['node'] = p.pop('process')
 
         for node_id, node in definition['processes'].items():
             yield ('addnode', {
@@ -441,17 +437,15 @@ class Runtime(object):
             })
         for edge in definition['connections']:
             payload = {
-                'graph': graph_id,
-                'tgt': port_msg(edge['tgt'])
+                'graph': graph_id
             }
-
-            src = edge.get('src', None)
-            if src:
+            port_msg(edge['tgt'])
+            if 'src' in edge:
                 command = 'addedge'
-                payload['src'] = port_msg(src)
+                port_msg(edge['src'])
             else:
                 command = 'addinitial'
-                payload['data'] = edge['data']
+            payload.update(edge)
 
             yield (command, payload)
 
@@ -530,7 +524,7 @@ class Runtime(object):
         component.metadata.update(metadata)
         return component.metadata
 
-    def add_edge(self, graph_id, src, tgt):
+    def add_edge(self, graph_id, src, tgt, metadata):
         """
         Connect ports between components.
         """
@@ -538,8 +532,14 @@ class Runtime(object):
             graph_id, src, tgt))
 
         graph = self.get_graph(graph_id)
-        graph.connect(self._get_port(graph, src, kind='out'),
-                      self._get_port(graph, tgt, kind='in'))
+        outport = self._get_port(graph, src, kind='out')
+        inport = self._get_port(graph, tgt, kind='in')
+        edge_metadata = inport._connection.metadata.setdefault(outport, {})
+        metadata.setdefault('route', FBP_TYPES[inport.type.get_spec()['type']]['color_id'])
+        edge_metadata.update(metadata)
+
+        graph.connect(outport, inport)
+        return edge_metadata
 
     def remove_edge(self, graph_id, src, tgt):
         """
@@ -551,6 +551,19 @@ class Runtime(object):
         graph = self.get_graph(graph_id)
         graph.disconnect(self._get_port(graph, src, kind='out'),
                          self._get_port(graph, tgt, kind='in'))
+
+    def set_edge_metadata(self, graph_id, src, tgt, metadata):
+        graph = self.get_graph(graph_id)
+        outport = self._get_port(graph, src, kind='out')
+        inport = self._get_port(graph, tgt, kind='in')
+        edge_metadata = inport._connection.metadata.setdefault(outport, {})
+
+        for key, value in metadata.items():
+            if value is None:
+                metadata.pop(key)
+                edge_metadata.pop(key, None)
+        edge_metadata.update(metadata)
+        return edge_metadata
 
     def initialize_port(self, graph_id, src, data):
         """
@@ -809,8 +822,14 @@ def create_websocket_application(runtime):
                                          payload['to'])
             # Edges/connections
             elif command == 'addedge':
-                self.runtime.add_edge(get_graph(), payload['src'],
-                                      payload['tgt'])
+                metadata = self.runtime.add_edge(get_graph(), payload['src'],
+                                                 payload['tgt'],
+                                                 payload.get('metadata', {}))
+                # send an immedate followup to set the color based on type
+                send_ack = False
+                payload['metadata'] = metadata
+                self.send('graph', command, payload)
+                self.send('graph', 'changeedge', payload)
             elif command == 'removeedge':
                 self.runtime.remove_edge(get_graph(), payload['src'],
                                          payload['tgt'])
@@ -833,6 +852,12 @@ def create_websocket_application(runtime):
             elif command == 'changenode':
                 metadata = self.runtime.set_node_metadata(get_graph(),
                                                           payload['id'],
+                                                          payload['metadata'])
+                payload['metadata'] = metadata
+            elif command == 'changeedge':
+                metadata = self.runtime.set_edge_metadata(get_graph(),
+                                                          payload['src'],
+                                                          payload['tgt'],
                                                           payload['metadata'])
                 payload['metadata'] = metadata
             elif command == 'getgraph':

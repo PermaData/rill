@@ -29,7 +29,7 @@ class OutputInterface(with_metaclass(ABCMeta, PortInterface)):
 
 class OutputPort(Port, OutputInterface):
     """
-    An ``OutputPort`` sends packets via a ``ConnectionInterface``.
+    An ``OutputPort`` sends packets via a ``BaseConnection``.
     """
 
     def __init__(self, component, name, **kwargs):

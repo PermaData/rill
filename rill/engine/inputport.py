@@ -275,7 +275,7 @@ class ConnectionInterface(with_metaclass(ABCMeta, object)):
         return self.is_closed() and self.is_empty()
 
 
-class InitializationConnection(ConnectionInterface):
+class InitializationConnection(BaseConnection):
     """
     This class provides connections that hold a single object. It is a
     degenerate form of ``Connection``. From the component's point of
@@ -287,6 +287,7 @@ class InitializationConnection(ConnectionInterface):
         self.inport = inport
         self._content = content
         self._is_closed = True
+        self.metadata = {}
 
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__,
@@ -334,7 +335,7 @@ class InitializationConnection(ConnectionInterface):
         return p
 
 
-class Connection(ConnectionInterface):
+class Connection(BaseConnection):
     """
     This class implements buffering between Component threads.
 
@@ -360,6 +361,7 @@ class Connection(ConnectionInterface):
         # properties
         self.drop_oldest = False
         self.count_packets = False
+        self.metadata = {}
 
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__,
