@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 
 from future.utils import with_metaclass
+from typing import List, Union, Any
 
 from rill.engine.port import (Port, ArrayPort, BasePortCollection,
                               PortInterface, OUT_NULL)
@@ -43,11 +44,12 @@ class OutputPort(Port, OutputInterface):
             self._connection._sender_count += 1
 
     def close(self):
-        """Close this OutputPort.
+        """
+        Close this OutputPort.
 
         This is a signal that no further packets will be
-        sent via self OutputPort. Since more than one OutputPort may feed a given
-        Connection, this does not necessarily close the Connection.
+        sent via self OutputPort. Since more than one OutputPort may feed a
+        given Connection, this does not necessarily close the Connection.
         """
         self.sender.logger.debug("Closing", port=self)
         if self.is_connected() and not self.is_closed():
@@ -83,12 +85,13 @@ class OutputPort(Port, OutputInterface):
 
         Parameters
         ----------
-        packet : ``rill.engine.packet.Packet``
+        packet : Union[``rill.engine.packet.Packet``, Any]
             the packet to send
 
         Returns
         -------
-        bool : if the send was successful
+        bool
+            Whether the send was successful
         """
         if not isinstance(packet, Packet):
             packet = self.component.create(packet)
@@ -136,7 +139,7 @@ class OutputPort(Port, OutputInterface):
 
     def downstream_count(self):
         """
-        Get the downstream packet count for a given ``OutputPort``.
+        Get the downstream packet count.
 
         Returns
         -------

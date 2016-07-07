@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod
 from collections import deque
 
 from future.utils import with_metaclass
+from typing import Any, Union, Iterable, Tuple
 
 from rill.engine.status import StatusValues
 from rill.engine.port import (Port, ArrayPort, BasePortCollection,
@@ -40,7 +41,7 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
 
         Returns
         -------
-        packet : ``rill.engine.packet.Packet`` or None
+        packet : Union[``rill.engine.packet.Packet``, None]
             next available packet
         """
         raise NotImplementedError
@@ -53,12 +54,13 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
 
         Parameters
         ----------
-        default : object
+        default : Any
             default value if there was no packet to receive
 
         Returns
         -------
-        object : packet contents
+        Any
+            packet contents
         """
         # p = self.receive()
         # if p is not None:
@@ -80,9 +82,9 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
         """
         Iterate over received packets.
 
-        Yields
+        Returns
         -------
-        ``rill.engine.packet.Packet``
+        Iterable[``rill.engine.packet.Packet``]
         """
         while True:
             p = self.receive()
@@ -98,9 +100,9 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
 
         This necessarily drops each packet that is received.
 
-        Yields
+        Returns
         -------
-        object
+        Iterable[Any]
         """
         for p in self.iter_packets():
             content = p.get_contents()
@@ -127,7 +129,7 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
 
 class InputPort(Port, InputInterface):
     """
-    An ``InputPort`` receives packets via a ``ConnectionInterface``.
+    An ``InputPort`` receives packets via a ``BaseConnection``.
     """
 
     def __init__(self, component, name, default=NOT_SET, static=False,
@@ -175,6 +177,13 @@ class InputPort(Port, InputInterface):
                 return p
 
     def initialize(self, static_value):
+        """
+        Initialize a port to a static value.
+
+        Parameters
+        ----------
+        static_value : Any
+        """
         if self.is_null():
             raise FlowError(
                 "Cannot initialize null port: {}".format(self))
@@ -192,6 +201,7 @@ class InputPort(Port, InputInterface):
 
     def uninitialize(self):
         """
+        Remove static value initialization from the port.
 
         Returns
         -------
@@ -338,6 +348,9 @@ class Connection(BaseConnection):
     """
     This class implements buffering between Component threads.
 
+    It represents an edge between one or more ``OutputPort``s and a single
+    ``InputPort``.
+
     One is created behind the scenes whenever two ports are connected. This
     class was founded on Doug Lea's BoundedBufferVST class from his book
     _Concurrent Programming in Java_, page 100.
@@ -348,10 +361,13 @@ class Connection(BaseConnection):
         # OutputPort.open()
         self._sender_count = 0
         # the connected InputPort
+        # type: rill.engine.outputport.InputPort
         self.inport = None
         # the outport currently sending
+        # type: rill.engine.outputport.OutputPort
         self.outport = None
         # all connected OutputPorts
+        # type: Set[rill.engine.outputport.OutputPort]
         self.outports = set()
         # packet queue and blocking events
         self._queue = None
@@ -472,18 +488,30 @@ class Connection(BaseConnection):
 
         A connection is open as long as there are open ``OutputPort``s still
         sending through it.
+
+        Returns
+        -------
+        bool
         """
         return self._sender_count == 0
 
     def is_empty(self):
         """
         Returns True if the connection is empty.
+
+        Returns
+        -------
+        bool
         """
         return self.count() == 0
 
     def is_full(self):
         """
         Returns True if the connection is full.
+
+        Returns
+        -------
+        bool
         """
         return self.count() == self.capacity()
 
@@ -572,7 +600,7 @@ class Connection(BaseConnection):
 
         Returns
         -------
-        success : bool
+        bool
             whether the packet was succesfully sent
         """
 
@@ -650,6 +678,13 @@ class Connection(BaseConnection):
         return True
 
     def capacity(self):
+        """
+        Get the size of the connection buffer.
+
+        Returns
+        -------
+        int
+        """
         return self._queue.maxlen
 
 
@@ -692,7 +727,7 @@ class EagerInputCollection(BaseInputCollection):
 
         Returns
         -------
-        ``InputPort`` or None
+        Union[``InputPort``, None]
             If all ports are drained, returns None
             Otherwise, suspends until data arrives at a port array element.
         """
@@ -766,7 +801,7 @@ class SynchronizedInputCollection(BaseInputCollection):
 
         Returns
         -------
-        tuple[``rill.engine.packet.Packet``, ...]
+        Tuple[``rill.engine.packet.Packet``, ...]
         """
         if not self.ports():
             return
@@ -804,9 +839,9 @@ class SynchronizedInputCollection(BaseInputCollection):
 
         This necessarily drops each packet that is received.
 
-        Yields
+        Returns
         -------
-        tuple[Any, ...]
+        Iterable[Tuple[Any, ...]]
         """
         for group in self.iter_packets():
             yield tuple(p.drop() for p in group)

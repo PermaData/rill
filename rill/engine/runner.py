@@ -85,7 +85,7 @@ class ComponentRunner(Greenlet):
 
         Returns
         -------
-        list of Exception
+        List[Exception]
         """
         errors = []
         try:
@@ -201,6 +201,16 @@ class ComponentRunner(Greenlet):
 
     @property
     def self_starting(self):
+        """
+        True if the component has no connected input ports or has been explictly
+        specified as self-starting.
+
+        This is only considered the first time the component is activiated.
+
+        Returns
+        -------
+        bool
+        """
         if self.has_run:
             return False
         if self.component._self_starting:
@@ -212,6 +222,11 @@ class ComponentRunner(Greenlet):
 
     @property
     def must_run(self):
+        """
+        Returns
+        -------
+        bool
+        """
         return not self.has_run and self.component._must_run
 
     def is_all_drained(self):
@@ -220,7 +235,7 @@ class ComponentRunner(Greenlet):
 
         Returns
         -------
-        all_drained : bool
+        bool
             all input ports are drained
         """
         try:

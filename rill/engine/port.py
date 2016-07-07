@@ -1,10 +1,11 @@
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict, Counter
 
-from future.utils import with_metaclass
-from future.utils import raise_from
+from future.utils import with_metaclass, raise_from
+from typing import Any, Union, Iterable, List
 
 from rill.engine.portdef import IN_NULL, OUT_NULL
+from rill.engine.exceptions import FlowError, PacketValidationError
 
 
 def is_null_port(port):
@@ -48,11 +49,23 @@ class PortInterface(with_metaclass(ABCMeta, object)):
     def close(self):
         """
         Close the port.
+
+        Components downstream that attempt to receive from a closed
+        ``InputPort`` receive a `None` packet.  Once all of the input ports are
+        closed and their connections are drained of packets, the component will
+        be automatically terminated.
         """
         raise NotImplementedError
 
     @abstractmethod
     def is_closed(self):
+        """
+        Return whether the port is closed for sending/receiving packets.
+
+        Returns
+        -------
+        bool
+        """
         raise NotImplementedError
 
 
@@ -68,10 +81,10 @@ class BasePort(with_metaclass(ABCMeta, object)):
         ----------
         component : ``rill.engine.component.Component``
         name : str
-        index : int or None
-        optional : bool
+        index : Optional[int]
+        required : bool
         type : ``rill.engine.types.TypeHandler``
-        description : str
+        description : Optional[str]
         """
         assert name is not None
         assert not isinstance(component, str)
@@ -129,6 +142,15 @@ class BasePort(with_metaclass(ABCMeta, object)):
 
     @abstractmethod
     def is_array(self):
+        """
+        Return whether the port is an array.
+
+        Array ports contain sparse indices to their element ports.
+
+        Returns
+        -------
+        bool
+        """
         raise NotImplementedError
 
 
@@ -147,11 +169,11 @@ class Port(BasePort):
 
         Parameters
         ----------
-        packet_content : object
+        packet_content : Any
 
         Returns
         -------
-        packet_content : object
+        Any
             original content, or content conformed based on the ``TypeHandler``
         """
         if self.type is not None:
@@ -175,7 +197,7 @@ class Port(BasePort):
 
     def is_connected(self):
         """
-        Return whether the output port is connected
+        Return whether the port is connected
 
         Returns
         -------
@@ -211,10 +233,9 @@ class PortContainerMixin(with_metaclass(ABCMeta, object)):
 
         This excludes ``ArrayPort``s but includes their members.
 
-        Yields
+        Returns
         -------
-        ``rill.engine.inputport.InputPort`` or
-        ``rill.engine.outputport.OutputPort``
+        Iterable[Union[``rill.engine.inputport.InputPort``, ``rill.engine.outputport.OutputPort``]]
         """
         raise NotImplementedError
 
@@ -226,8 +247,7 @@ class PortContainerMixin(with_metaclass(ABCMeta, object)):
 
         Returns
         -------
-        list[``rill.engine.inputport.InputPort``] or
-        list[``rill.engine.outputport.OutputPort``]
+        List[Union[``rill.engine.inputport.InputPort``, ``rill.engine.outputport.OutputPort``]]
         """
         return list(self.iter_ports())
 
@@ -269,10 +289,9 @@ class ArrayPort(BasePort, PortContainerMixin):
         """
         Iterate over element ports.
 
-        Yields
+        Returns
         -------
-        ``rill.engine.inputport.InputPort`` or
-        ``rill.engine.outputport.OutputPort``
+        Iterable[Union[``rill.engine.inputport.InputPort``, ``rill.engine.outputport.OutputPort``]]
         """
         for index in sorted(self._elements.keys()):
             yield self._elements[index]
@@ -280,6 +299,11 @@ class ArrayPort(BasePort, PortContainerMixin):
     __iter__ = iter_ports
 
     def __getitem__(self, index):
+        """
+        Returns
+        -------
+        Union[``rill.engine.inputport.InputPort``, ``rill.engine.outputport.OutputPort``]
+        """
         # FIXME: if the component is in an uninitialized state have this
         # default to get_element(index, create=True).  useful while building
         # networks. e.g.  mycomp.port('IN')[2]
@@ -289,6 +313,11 @@ class ArrayPort(BasePort, PortContainerMixin):
         self._elements[index] = port
 
     def __len__(self):
+        """
+        Returns
+        -------
+        int
+        """
         return len(self._elements)
 
     def next_available_index(self):
@@ -297,7 +326,8 @@ class ArrayPort(BasePort, PortContainerMixin):
 
         Returns
         -------
-        index : int
+        int
+            port index
         """
         if not self._elements:
             return 0
@@ -319,8 +349,7 @@ class ArrayPort(BasePort, PortContainerMixin):
 
         Returns
         -------
-        ``rill.engine.inputport.InputPort`` or
-        ``rill.engine.outputport.OutputPort``
+        Union[``rill.engine.inputport.InputPort``, ``rill.engine.outputport.OutputPort``]
         """
         if index is None:
             index = self.next_available_index()
@@ -339,13 +368,12 @@ class ArrayPort(BasePort, PortContainerMixin):
 
         Parameters
         ----------
-        index : int
+        index : Optional[int]
             index of element. If None, the next available index is used
 
         Returns
         -------
-        ``rill.engine.inputport.InputPort`` or
-        ``rill.engine.outputport.OutputPort``
+        Union[``rill.engine.inputport.InputPort``, ``rill.engine.outputport.OutputPort``]
         """
         if self.fixed_size is not None:
             raise FlowError(
@@ -402,7 +430,7 @@ class BasePortCollection(PortContainerMixin):
         Parameters
         ----------
         component : ``rill.engine.component.Component``
-        ports : iterable[``BasePort``]
+        ports : Iterable[``BasePort``]
         """
         self.component = component
         self._ports = OrderedDict((p.name, p) for p in self._prep_args(ports))
@@ -415,15 +443,19 @@ class BasePortCollection(PortContainerMixin):
         """
         Iterate over all ports and their children.
 
-        Yields
+        Returns
         -------
-        ``rill.engine.inputport.InputPort`` or
-        ``rill.engine.outputport.OutputPort``
+        Iterable[Union[``rill.engine.inputport.InputPort``, ``rill.engine.outputport.OutputPort``]]
         """
         for port in self._ports.values():
             yield port
 
     def __getitem__(self, item):
+        """
+        Returns
+        -------
+        Union[``rill.engine.inputport.InputPort``, ``rill.engine.outputport.OutputPort``]
+        """
         try:
             return self._ports[item]
         except KeyError as e:

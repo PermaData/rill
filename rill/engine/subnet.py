@@ -2,13 +2,14 @@ from abc import ABCMeta, abstractmethod
 
 from future.utils import with_metaclass
 from past.builtins import basestring
+from typing import Type
 
 from rill.engine.component import Component, inport, outport, logger
 from rill.engine.portdef import InputPortDefinition, OutputPortDefinition
 from rill.engine.network import Network
 from rill.engine.status import StatusValues
-from rill.engine.inputport import InputPort, BaseInputCollection, InitializationConnection
-from rill.engine.outputport import OutputPort, BaseOutputCollection
+from rill.engine.inputport import InputPort, InitializationConnection
+from rill.engine.outputport import OutputPort
 from rill.engine.exceptions import FlowError
 from rill.engine.packet import Packet
 
@@ -384,7 +385,7 @@ def make_subnet(name, net):
 
     Returns
     -------
-    ``SubNet`` class
+    Type[``SubNet``]
     """
     def define(self, _):
         self.sub_network = net

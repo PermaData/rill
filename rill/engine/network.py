@@ -9,6 +9,7 @@ import time
 
 from future.utils import raise_with_traceback
 from past.builtins import basestring
+from typing import Dict, Union, Tuple, Any, Optional
 
 from rill.engine.exceptions import FlowError, NetworkDeadlock
 from rill.engine.runner import ComponentRunner
@@ -23,10 +24,6 @@ from rill.engine.utils import CountDownLatch
 class Network(object):
     """
     A network of comonents.
-
-    Attributes
-    ----------
-    _components : dict[str, ``rill.engine.runner.ComponentRunner``]
     """
 
     def __init__(self, default_capacity=10, deadlock_test_interval=1,
@@ -34,12 +31,14 @@ class Network(object):
         # self.logger = logger
         self.name = name
         # parent Network: set by SubNet
+        # type: Network
         self.parent = None
         self.default_capacity = default_capacity
         self.deadlock_test_interval = deadlock_test_interval
 
         self.active = False  # used for deadlock detection
 
+        # type: Dict[str, rill.engine.runner.ComponentRunner]
         self._components = OrderedDict()
 
         # exported inports and outports
@@ -66,6 +65,7 @@ class Network(object):
         # for use by list_comp_status(). here for post-mortem inspection
         self.msgs = None
 
+        # type: Dict[rill.engine.inputports.Connection, int]
         self._packet_counts = None
 
         # FIXME: these were AtomicInteger instances, with built-in locking.
@@ -187,17 +187,15 @@ class Network(object):
 
         Parameters
         ----------
-        arg : ``rill.engine.outputport.OutputPort`` or
-            ``rill.engine.inputport.InputPort`` or str
-        index : int or None
+        arg : Union[``rill.engine.outputport.OutputPort``, ``rill.engine.inputport.InputPort``, str]
+        index : Optional[int]
             index of element, if port is an array. If None, the next available
             index is used
         kind : {'in', 'out'}
 
         Returns
         -------
-        port : ``rill.engine.outputport.OutputPort`` or
-            ``rill.engine.inputport.InputPort``
+        port : Union[``rill.engine.outputport.OutputPort``, ``rill.engine.inputport.InputPort``]
         """
         if isinstance(arg, (OutputPort, OutputArray, InputPort, InputArray)):
             port = arg
@@ -227,8 +225,8 @@ class Network(object):
 
         Parameters
         ----------
-        sender : ``rill.engine.inputport.InputPort`` or str
-        receiver : ``rill.engine.outputport.OutputPort`` or str
+        sender : Union[``rill.engine.inputport.InputPort``, str]
+        receiver : Union[``rill.engine.outputport.OutputPort``, str]
 
         Returns
         -------
@@ -236,6 +234,8 @@ class Network(object):
         """
         outport = self.get_component_port(sender, kind='out')
         inport = self.get_component_port(receiver, kind='in')
+        assert not outport.is_array()
+        assert not inport.is_array()
 
         if connection_capacity is None:
             connection_capacity = self.default_capacity
@@ -252,8 +252,8 @@ class Network(object):
 
         Parameters
         ----------
-        sender : ``rill.engine.inputport.InputPort`` or str
-        receiver : ``rill.engine.outputport.OutputPort`` or str
+        sender : Union[``rill.engine.inputport.InputPort``, str]
+        receiver : Union[``rill.engine.outputport.OutputPort``, str]
         """
         outport = self.get_component_port(sender, kind='out')
         inport = self.get_component_port(receiver, kind='in')
@@ -270,8 +270,8 @@ class Network(object):
 
         Parameters
         ----------
-        content : object
-        receiver : ``rill.engine.inputport.InputPort`` or str
+        content : Any
+        receiver : Union[``rill.engine.inputport.InputPort``, str]
         """
         inport = self.get_component_port(receiver, kind='in')
         inport.initialize(content)
@@ -282,7 +282,12 @@ class Network(object):
 
         Parameters
         ----------
-        receiver : ``rill.engine.inputport.InputPort`` or str
+        receiver : Union[``rill.engine.inputport.InputPort``, str]
+
+        Returns
+        -------
+        ``rill.engine.inputport.InitializationConnection``
+            The removed initialization connection
         """
         inport = self.get_component_port(receiver, kind='in')
         return inport.uninitialize()
@@ -477,12 +482,13 @@ class Network(object):
 
         Parameters
         ----------
-        msgs : list of (status, obj) tuple
+        msgs : List[Tuple[``StatusValues``, List[object]]]
             status messages
 
         Returns
         -------
-        is_deadlocked : bool
+        bool
+            whether the network is deadlocked
         """
         from rill.engine.subnet import SubNet
         # Messages are added to list, rather than written directly,
@@ -556,6 +562,15 @@ class Network(object):
         return self._packet_counts
 
     def incr_packet_count(self, connection):
+        """
+        Increment the packet count for the given connection.
+
+        This is purely for analysis.
+
+        Parameters
+        ----------
+        connection : ``rill.engine.inputports.Connection``
+        """
         self._packet_counts[connection] += 1
 
     def get_components(self):
@@ -564,7 +579,7 @@ class Network(object):
 
         Returns
         -------
-        dict[str, ``rill.enginge.component.Component``]
+        Dict[str, ``rill.enginge.component.Component``]
         """
         return self._components
 
@@ -703,12 +718,12 @@ class Network(object):
         ----------
         definition : dict
             network structure according to fbp json standard
-        component_lookup : dict[str, ``rill.enginge.component.Component``]
+        component_lookup : Dict[str, ``rill.enginge.component.Component``]
             maps of component name to component
 
         Returns
         -------
-        net : ``rill.enginge.network.Network``
+        ``rill.enginge.network.Network``
         """
         import pydoc
 
@@ -758,15 +773,15 @@ def apply_network(network, inputs, outports=None):
     Parameters
     ----------
     network : ``rill.engine.network.Network``
-    inputs : dict[str, Any]
+    inputs : Dict[str, Any]
         map of inport names to initial content
-    outports : list[str], optional
+    outports : Optional[List[str]]
         list of outports whose results should be collected
 
     Returns
     -------
-    outputs : dict
-        map network outport names to values
+    Dict[str, Any]
+        map network outport names to captured values
     """
     from rill.engine.subnet import make_subnet
     from rill.components.basic import Capture

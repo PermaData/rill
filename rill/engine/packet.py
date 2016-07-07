@@ -166,7 +166,7 @@ class Packet(object):
 
         Returns
         -------
-        contents : object
+        Any
             the contents of the packet being dropped
         """
         # The component that this runs from doesn't matter: the component is

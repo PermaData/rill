@@ -4,6 +4,7 @@ import re
 from abc import ABCMeta, abstractmethod
 
 from future.utils import with_metaclass
+from typing import Any, List, Iterable
 
 from rill.engine.port import (PortCollection, flatten_arrays, is_null_port,
                               IN_NULL, OUT_NULL)
@@ -12,7 +13,6 @@ from rill.engine.exceptions import FlowError, ComponentError
 from rill.engine.utils import LogFormatter
 from rill.utils import cache, classproperty
 from rill.decorators import inport, outport
-
 
 PORT_NAME_REG = r"^([a-zA-Z][_a-zA-Z0-9]*)(?:\[(\d+)\])?$"
 
@@ -97,7 +97,7 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         Returns
         -------
-        list[``rill.engine.network.Network``]
+        List[``rill.engine.network.Network``]
         """
         parent = self.parent
         parents = []
@@ -113,7 +113,7 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         Returns
         -------
-        list[``Component``]
+        List[``Component``]
         """
         return []
 
@@ -139,6 +139,18 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         parts = [x.name for x in self.get_parents() if x.name is not None]
         return '.'.join(parts + [self.get_name()])
+
+    @classmethod
+    def get_type(cls):
+        """
+        Get component type for serialization
+
+        Returns
+        -------
+        str
+        """
+        name = cls.type_name or cls.__name__
+        return '{0}/{1}'.format(cls.__module__, name)
 
     @classmethod
     def get_spec(cls):
@@ -175,7 +187,8 @@ class Component(with_metaclass(ABCMeta, object)):
 
     @abstractmethod
     def execute(self):
-        """Main run method
+        """
+        Main run method
 
         Must be implemented by all sub-classes.
         """
@@ -186,9 +199,9 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         Iterate over this component's input ports.
 
-        Yields
+        Returns
         -------
-        ``rill.engine.inputport.InputPort``
+        Iterable[``rill.engine.inputport.InputPort``]
         """
         for port in flatten_arrays(self.ports):
             if port.kind == 'in':
@@ -199,9 +212,9 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         Iterate over this component's output ports.
 
-        Yields
+        Returns
         -------
-        ``rill.engine.inputport.OutputPort``
+        Iterable[``rill.engine.inputport.OutputPort``]
         """
         for port in flatten_arrays(self.ports):
             if port.kind == 'out':
@@ -286,9 +299,13 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         Create a Packet and set its owner to this component.
 
+        Parameters
+        ----------
+        contents : Any
+
         Returns
         -------
-        packet : ``rill.engine.packet.Packet``
+        ``rill.engine.packet.Packet``
         """
         self.logger.debug("Creating packet: " + repr(contents))
         self.network.creates += 1
@@ -310,7 +327,7 @@ class Component(with_metaclass(ABCMeta, object)):
 
         Returns
         -------
-        contents : object
+        Any
             packet contents
         """
         self.logger.debug("Dropping packet: " + str(packet))
@@ -445,11 +462,11 @@ class Component(with_metaclass(ABCMeta, object)):
         Parameters
         ----------
         key : hashable
-        value : object
+        value : Any
 
         Returns
         -------
-        prev_value : object or None
+        Any
             previous value
         """
         # FIXME: lock here?
@@ -467,22 +484,10 @@ class Component(with_metaclass(ABCMeta, object)):
 
         Returns
         -------
-        value : object or None
+        Any
         """
         # FIXME: lock here?
         return self.network.globals.get(key)
-
-    @classmethod
-    def get_type(cls):
-        """
-        Get component type for serialization
-
-        Returns
-        -------
-        str
-        """
-        name = cls.type_name or cls.__name__
-        return '{0}/{1}'.format(cls.__module__, name)
 
 
 class _FunctionComponent(with_metaclass(ABCMeta, Component)):
