@@ -1,5 +1,5 @@
 from rill.engine.runner import ComponentRunner
-from rill.runtime import Runtime
+from rill.runtime import Runtime, get_graph_messages
 from rill.engine.network import Network
 
 from tests.components import *
@@ -34,7 +34,7 @@ def test_get_graph_messages():
     net.export('Pass.OUT', 'OUTPORT')
     net.export('Outside.IN', 'INPORT')
 
-    messages = list(runtime.get_graph_messages(graph_id))
+    messages = list(get_graph_messages(runtime.get_graph(graph_id), graph_id))
     assert ('clear', {
         'id': graph_id,
         'name': graph_name

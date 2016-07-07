@@ -187,6 +187,69 @@ def init():
     _initialized = True
 
 
+def get_graph_messages(net, graph_id):
+    """
+    Create graph protocol messages to build graph for receiver
+
+    Params
+    ------
+    net : ``rill.engine.network.Network``
+    graph_id : str
+        id of graph to serialize
+
+    Returns
+    -------
+    Iterator[Dict[str, Any]]
+        graph protocol messages that reproduce graph
+    """
+    definition = net.to_dict()
+
+    yield ('clear', {
+        'id': graph_id,
+        'name': net.name
+    })
+
+    def port_msg(p):
+        p['node'] = p.pop('process')
+
+    for node_id, node in definition['processes'].items():
+        yield ('addnode', {
+            'graph': graph_id,
+            'id': node_id,
+            'component': node['component'],
+            'metadata': node['metadata']
+        })
+    for edge in definition['connections']:
+        payload = {
+            'graph': graph_id
+        }
+        port_msg(edge['tgt'])
+        if 'src' in edge:
+            command = 'addedge'
+            port_msg(edge['src'])
+        else:
+            command = 'addinitial'
+        payload.update(edge)
+
+        yield (command, payload)
+
+    for public_port, inner_port in definition['inports'].items():
+        yield ('addinport', {
+            'graph': graph_id,
+            'public': public_port,
+            'node': inner_port['process'],
+            'port': inner_port['port']
+        })
+
+    for public_port, inner_port in definition['outports'].items():
+        yield ('addoutport', {
+            'graph': graph_id,
+            'public': public_port,
+            'node': inner_port['process'],
+            'port': inner_port['port']
+        })
+
+
 class Runtime(object):
     """
     Rill runtime for python
@@ -409,70 +472,6 @@ class Runtime(object):
         except KeyError:
             raise RillRuntimeError('Requested graph not found')
 
-    def get_graph_messages(self, graph_id):
-        """
-        Create graph protocol messages to build graph for receiver
-
-        Params
-        ------
-        graph_id : str
-            id of graph to serialize
-
-        Return
-        ------
-        Iterator[Dict[str, Any]]
-            graph protocol messages that reproduce graph
-
-        """
-        net = self.get_graph(graph_id)
-        definition = net.to_dict()
-        # FIXME: the schema of to_dict is *very* similar to the messages. just
-        # a few key changes
-        yield ('clear', {
-            'id': graph_id,
-            'name': net.name
-        })
-
-        def port_msg(p):
-            p['node'] = p.pop('process')
-
-        for node_id, node in definition['processes'].items():
-            yield ('addnode', {
-                'graph': graph_id,
-                'id': node_id,
-                'component': node['component'],
-                'metadata': node['metadata']
-            })
-        for edge in definition['connections']:
-            payload = {
-                'graph': graph_id
-            }
-            port_msg(edge['tgt'])
-            if 'src' in edge:
-                command = 'addedge'
-                port_msg(edge['src'])
-            else:
-                command = 'addinitial'
-            payload.update(edge)
-
-            yield (command, payload)
-
-        for public_port, inner_port in definition['inports'].items():
-            yield ('addinport', {
-                'graph': graph_id,
-                'public': public_port,
-                'node': inner_port['process'],
-                'port': inner_port['port']
-            })
-
-        for public_port, inner_port in definition['outports'].items():
-            yield ('addoutport', {
-                'graph': graph_id,
-                'public': public_port,
-                'node': inner_port['process'],
-                'port': inner_port['port']
-            })
-
     def new_graph(self, graph_id):
         """
         Create a new graph.
@@ -614,27 +613,25 @@ def create_websocket_application(runtime):
         """
         Web socket application that hosts a single ``Runtime`` instance.
 
-        An instance of this class sits between the websocket and the runtime.
-        It receives messages over the websocket, delegates their payload to
-        the appropriate ``Runtime`` methods, and sends responses where
-        applicable.
+        An instance of this class receives messages over a websocket, delegates
+        message payloads to the appropriate ``Runtime`` methods, and sends
+        responses where applicable.
 
         Message structures are defined by the FBP Protocol.
         """
         def __init__(self, ws):
             super(WebSocketRuntimeApplication, self).__init__(self)
 
-            self.logger = logging.getLogger('%s.%s' % (self.__class__.__module__,
-                                                    self.__class__.__name__))
+            self.logger = logging.getLogger('{}.{}'.format(
+                self.__class__.__module__, self.__class__.__name__))
             self.runtime = runtime
 
             # insert a listener
             Connection.send = add_callback(Connection.send,
                                            self.send_connection_data)
 
-        # WebSocket transport handling --
+        # WebSocketApplication overrides --
 
-        # FIXME: not used?
         @staticmethod
         def protocol_name():
             """
@@ -646,10 +643,10 @@ def create_websocket_application(runtime):
             self.logger.info("Connection opened")
 
         def on_close(self, reason):
-            self.logger.info("Connection closed. Reason: %s" % reason)
+            self.logger.info("Connection closed. Reason: {}".format(reason))
 
         def on_message(self, message, **kwargs):
-            self.logger.debug('MESSAGE: %s' % message)
+            self.logger.debug('MESSAGE: {}'.format(message))
 
             if not message:
                 self.logger.warn('Got empty message')
@@ -689,6 +686,8 @@ def create_websocket_application(runtime):
                 handler(command, payload)
             except RillRuntimeError as err:
                 self.send_error(protocol, str(err))
+
+        # Utilities --
 
         def send(self, protocol, command, payload):
             """
@@ -871,7 +870,8 @@ def create_websocket_application(runtime):
             elif command == 'getgraph':
                 send_ack = False
                 graph_id = payload['id']
-                graph_messages = self.runtime.get_graph_messages(graph_id)
+                graph_messages = get_graph_messages(
+                    self.runtime.get_graph(graph_id), graph_id)
                 for command, payload in graph_messages:
                     self.send('graph', command, payload)
             elif command == 'list':

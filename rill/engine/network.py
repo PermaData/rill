@@ -771,7 +771,7 @@ def apply_network(network, inputs, outports=None):
     from rill.engine.subnet import make_subnet
     from rill.components.basic import Capture
 
-    if not outports:
+    if outports is None:
         # FIXME: I believe this should default to *unconnected* output ports
         outports = network.outports.keys()
 
@@ -782,14 +782,15 @@ def apply_network(network, inputs, outports=None):
     for (port_name, content) in inputs.items():
         wrapper.initialize(content, apply.port(port_name))
 
-    captures = {}
-    for port_name in outports:
-        capture_name = 'Capture_{}'.format(port_name)
-        capture = wrapper.add_component(capture_name, Capture)
-        wrapper.connect(apply.port(port_name), capture.port('IN'))
-        captures[port_name] = capture
+    if outports is not False:
+        captures = {}
+        for port_name in outports:
+            capture_name = 'Capture_{}'.format(port_name)
+            capture = wrapper.add_component(capture_name, Capture)
+            wrapper.connect(apply.port(port_name), capture.port('IN'))
+            captures[port_name] = capture
 
     wrapper.go()
 
-    return {name: capture.value for (name, capture) in captures.items()}
-
+    if outports is not False:
+        return {name: capture.value for (name, capture) in captures.items()}
