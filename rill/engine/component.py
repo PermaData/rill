@@ -183,11 +183,11 @@ class Component(with_metaclass(ABCMeta, object)):
             'subgraph': issubclass(cls, SubGraph),
             'inPorts': [
                 indef.get_spec()
-                for indef in cls.inport_definitions
+                for indef in cls.inport_definitions.values()
             ],
             'outPorts': [
                 outdef.get_spec()
-                for outdef in cls.outport_definitions
+                for outdef in cls.outport_definitions.values()
             ]
         }
 

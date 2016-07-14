@@ -364,6 +364,7 @@ def make_subgraph(name, graph):
 
     attrs = {
         'name': name,
+        'subgraph': graph,
         'define': classmethod(define)
     }
     return type(name, (SubGraph,), attrs)

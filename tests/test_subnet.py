@@ -5,6 +5,7 @@ rill.engine.utils.patch()
 
 from rill.engine.network import Network, Graph, run_graph
 from rill.engine.runner import ComponentRunner
+from rill.engine.subnet import make_subgraph
 from rill.components.basic import Capture
 from rill.components.timing import SlowPass
 from tests.components import *
@@ -149,4 +150,47 @@ def test_initialize_subnet():
 
     assert capture.value == 5
 
+
+def test_make_subgraph():
+    sub = Graph()
+    sub.add_component('Head', Passthru)
+    sub.add_component('Tail', Passthru)
+
+    sub.connect('Head.OUT', 'Tail.IN')
+
+    sub.export('Head.IN', 'IN')
+    sub.export('Tail.OUT', 'OUT')
+
+    PassNet = make_subgraph('PassNet', sub)
+
+    assert len(PassNet.inport_definitions) == 2
+    assert len(PassNet.outport_definitions) == 2
+
+    graph = Graph()
+    capture = graph.add_component('Capture', Capture)
+
+    graph.add_component('Pass', PassNet)
+    graph.initialize(5, 'Pass.IN')
+    graph.connect('Pass.OUT', 'Capture.IN')
+
+    run_graph(graph)
+
+    assert capture.value == 5
+
+def test_get_spec():
+    sub = Graph()
+    sub.add_component('Head', Passthru)
+    sub.add_component('Tail', Passthru)
+
+    sub.connect('Head.OUT', 'Tail.IN')
+
+    sub.export('Head.IN', 'IN')
+    sub.export('Tail.OUT', 'OUT')
+
+    PassNet = make_subgraph('PassNet', sub)
+    spec = PassNet.get_spec()
+
+    assert spec['name'] == 'abc/PassNet'
+    assert len(spec['inPorts']) == 2
+    assert len(spec['outPorts']) == 2
 

@@ -17,7 +17,7 @@ from past.builtins import basestring
 from rill.engine.component import Component
 from rill.engine.inputport import Connection
 from rill.engine.network import Graph, Network
-from rill.engine.subnet import SubGraph
+from rill.engine.subnet import SubGraph, make_subgraph
 from rill.engine.types import FBP_TYPES
 from rill.engine.exceptions import FlowError
 
@@ -319,6 +319,16 @@ class Runtime(object):
 
     # Components --
 
+    def get_subnet_component(self, graph_id):
+        graph = self.get_graph(graph_id)
+        Sub = make_subgraph(str(graph_id), graph)
+        return Sub
+
+    def register_subnet(self, graph_id):
+        subnet = self.get_subnet_component(graph_id)
+        self.register_component(subnet, True)
+        return subnet.get_spec()
+
     def get_all_component_specs(self):
         """
         Returns
@@ -614,6 +624,18 @@ class Runtime(object):
             # message is when noflo initializes the inport to [] (see initialize_port as well)
             return graph.uninitialize(target_port)._content
 
+    def add_export(self, graph_id, node, port, public):
+        graph = self.get_graph(graph_id)
+        graph.export("{}.{}".format(node, port), public)
+
+    def remove_inport(self, graph_id, public):
+        graph = self.get_graph(graph_id)
+        graph.remove_inport(public)
+
+    def remove_outport(self, graph_id, public):
+        graph = self.get_graph(graph_id)
+        graph.remove_outport(public)
+
 
 class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
     """
@@ -827,6 +849,14 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
             except KeyError:
                 raise RillRuntimeError('No graph specified')
 
+        def update_subnet(graph_id):
+            spec = self.runtime.register_subnet(graph_id)
+            self.send(
+                'component',
+                'component',
+                spec
+            )
+
         # New graph
         if command == 'clear':
             self.runtime.new_graph(payload['id'])
@@ -865,9 +895,15 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
             payload['metadata'] = {}
         # Exported ports
         elif command in ('addinport', 'addoutport'):
-            pass  # Not supported yet
-        elif command in ('removeinport', 'removeoutport'):
-            pass  # Not supported yet
+            self.runtime.add_export(get_graph(), payload['node'],
+                                    payload['port'], payload['public'])
+            update_subnet(get_graph())
+        elif command == 'removeinport':
+            self.runtime.remove_inport(get_graph(), payload['public'])
+            update_subnet(get_graph())
+        elif command == 'removeoutport':
+            self.runtime.remove_outport(get_graph(), payload['public'])
+            update_subnet(get_graph())
         # Metadata changes
         elif command == 'changenode':
             metadata = self.runtime.set_node_metadata(get_graph(),

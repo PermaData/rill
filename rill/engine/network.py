@@ -221,6 +221,12 @@ class Graph(object):
         elif isinstance(internal_port, OutputPort):
             self.outports[external_port_name] = internal_port
 
+    def remove_inport(self, external_port_name):
+        del self.inports[external_port_name]
+
+    def remove_outport(self, external_port_name):
+        del self.outports[external_port_name]
+
     def get_component_port(self, arg, index=None, kind=None):
         """
         Get a port on a component.
@@ -247,7 +253,9 @@ class Graph(object):
             if isinstance(arg, (tuple, list)):
                 comp_name, port_name = arg
             elif isinstance(arg, basestring):
-                comp_name, port_name = arg.split('.')
+                split = arg.split('.')
+                comp_name = '.'.join(split[:-1])
+                port_name = split[-1]
             else:
                 raise TypeError(arg)
 
