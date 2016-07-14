@@ -8,18 +8,8 @@ import logging
 ComponentRunner.logger.setLevel(logging.DEBUG)
 
 
-# FIXME: create a fixture for the network in test_network_serialization and use that here
-def test_get_graph_messages():
-    """
-    Test that runtime can build graph with graph protocol messages
-    """
-    graph_id = 'graph1'
-    graph_name = 'My Graph'
-    runtime = Runtime()
-    runtime.new_graph(graph_id)
-
+def get_network(graph_name):
     net = Network(name=graph_name)
-    runtime.add_graph(graph_id, net)
 
     gen = net.add_component('Generate', GenerateTestData)
     gen.metadata['x'] = 5
@@ -33,8 +23,25 @@ def test_get_graph_messages():
     net.initialize(5, 'Generate.COUNT')
     net.export('Pass.OUT', 'OUTPORT')
     net.export('Outside.IN', 'INPORT')
+    return net, gen, passthru, outside
+
+
+# FIXME: create a fixture for the network in test_network_serialization and use that here
+def test_get_graph_messages():
+    """
+    Test that runtime can build graph with graph protocol messages
+    """
+    graph_id = 'graph1'
+    graph_name = 'My Graph'
+    runtime = Runtime()
+    runtime.new_graph(graph_id)
+
+    net, gen, passthru, outside = get_network(graph_name)
+    runtime.add_graph(graph_id, net)
 
     messages = list(get_graph_messages(runtime.get_graph(graph_id), graph_id))
+
+    # FIXME: paste in an exact copy of the document here
     assert ('clear', {
         'id': graph_id,
         'name': graph_name
@@ -84,7 +91,9 @@ def test_get_graph_messages():
 
     assert ('addinitial', {
         'graph': graph_id,
-        'data': 5,
+        'src': {
+            'data': 5,
+        },
         'tgt': {
             'node': gen.get_name(),
             'port': 'COUNT'

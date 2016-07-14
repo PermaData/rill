@@ -675,7 +675,7 @@ class Network(object):
                     content = conn._content
                     content = inport.type.to_primitive(content)
                     connection = {
-                        'data': content,
+                        'src': {'data': content},
                         'tgt': portdef(comp_name, inport)
                     }
                     if conn.metadata:
