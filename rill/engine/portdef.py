@@ -42,13 +42,13 @@ class PortDefinition(object):
         return data
 
     def get_port_type(self):
-        '''
+        """
         Get the class used by this port.
 
         Returns
         -------
         Type[``rill.engine.port.BasePort``]
-        '''
+        """
         raise NotImplementedError
 
     def create_port(self, component):

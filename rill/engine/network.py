@@ -42,7 +42,9 @@ class Network(object):
         self._components = OrderedDict()
 
         # exported inports and outports
+        # type: Dict[str, rill.engine.inputport.InputPort]
         self.inports = OrderedDict()
+        # type: Dict[str, rill.engine.inputport.OutputPort]
         self.outports = OrderedDict()
 
         # FIXME: not used

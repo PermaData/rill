@@ -109,7 +109,7 @@ def _itermodules():
 
 
 def _import_component_modules():
-    '''
+    """
     Import component collection modules.
 
     Modules are discovered in the following ways:
@@ -120,7 +120,7 @@ def _import_component_modules():
     Additional, you can specify `RILL_PYTHONPATH` environment variable to
     temporariliy extend the python search path (`sys.path`) during the
     search for the above modules.
-    '''
+    """
     import imp
     import sys
     suffixes = tuple([x[0] for x in imp.get_suffixes()])
@@ -178,9 +178,9 @@ def _import_component_modules():
 
 
 def init():
-    '''
+    """
     Initialize rill.
-    '''
+    """
     global _initialized
     if not _initialized:
         _import_component_modules()
