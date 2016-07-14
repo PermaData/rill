@@ -1,18 +1,29 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
+from rill.utils import abstractclassmethod
 
 from future.utils import with_metaclass
-from past.builtins import basestring
 from typing import Type
 
 from rill.engine.component import Component, inport, outport, logger
 from rill.engine.portdef import InputPortDefinition, OutputPortDefinition
 from rill.engine.network import Network
 from rill.engine.status import StatusValues
-from rill.engine.inputport import InputPort, InitializationConnection
-from rill.engine.outputport import OutputPort
+from rill.engine.inputport import InitializationConnection
 from rill.engine.exceptions import FlowError
 from rill.engine.packet import Packet
 
+
+# using a component to proxy each exported port has a few side effects:
+# - additional logging output for the extra components
+# - additional threads which aren't necessary
+# - components in the graph which need to be ignored
+# - packets are temporarily owned by the SubNet
+# - dynamically adding/removing inports/outports requires extra book-keeping
+#   to ensure the ExportComponents are properly created and connected
+# but it plays well with the rest of the system in a way that is
+# difficult to achieve otherwise. For example, simply exposing the
+# internal ports doesn't work because the port's component attr is not
+# the SubNet, and so the SubNet is never activated by OutputPort.send()
 
 @inport("NAME", type=str)
 @inport("INDEX", type=int)
@@ -22,15 +33,15 @@ class ExportComponent(Component):
     """
     hidden = True
 
-    # @property
-    # def subnet(self):
-    #     """
-    #
-    #     Returns
-    #     -------
-    #     ``rill.engine.subnet.SubNet``
-    #     """
-    #     return self.parent.parent
+    @property
+    def subnet(self):
+        """
+
+        Returns
+        -------
+        ``rill.engine.subnet.SubNet``
+        """
+        return self.parent._component
 
     def internal_port(self):
         pname = self.ports.NAME.receive_once()
@@ -174,12 +185,10 @@ class SubNet(with_metaclass(ABCMeta, Component)):
     """
     A component that defines and executes a sub-network of components
     """
-    def __init__(self, name, parent):
-        Component.__init__(self, name, parent)
-        self.sub_network = None
+    sub_network = None
 
-    @abstractmethod
-    def define(self, net):
+    @abstractclassmethod
+    def define(cls, net):
         """
         Define the network that will be executed by this SubNet.
 
@@ -191,9 +200,9 @@ class SubNet(with_metaclass(ABCMeta, Component)):
         raise NotImplementedError
 
     def _init(self):
-        super(SubNet, self)._init()
-        self.sub_network = Network()
-        self.define(self.sub_network)
+        if self.sub_network is None:
+            self._init_network()
+
         # we set these after define because we're paranoid:
         # don't do deadlock testing in subnets - you need to consider
         # the whole net!
@@ -201,74 +210,105 @@ class SubNet(with_metaclass(ABCMeta, Component)):
         self.sub_network.parent = self.parent
         self.sub_network.name = self._name
 
-        # FIXME: won't setting create=True  try to recreate ports previously
-        # defined using @inport and @outport?
-        for (name, internal_port) in self.sub_network.inports.items():
-            self._export(internal_port, name, create=True)
+        # FIXME: a hack to provide access to this class in ExportComponent
+        self.sub_network._component = self
 
-        for (name, internal_port) in self.sub_network.outports.items():
-            self._export(internal_port, name, create=True)
+        super(SubNet, self)._init()
 
-    def _export(self, internal_port, external_port_name, create=False):
+    @classmethod
+    def port_definitions(cls):
+        if cls.sub_network is None:
+            cls._init_network()
+        super(SubNet, cls).port_definitions()
+
+    @classmethod
+    def _init_network(cls):
         """
-        Expose a port.
+        Initialize the network.
+
+        This is a classmethod so that exported port definitions can be
+        inspected without instantiating the SubNet, which is a requirement
+        for all Components.
+        """
+        cls.sub_network = Network()
+        cls.define(cls.sub_network)
+        assert cls.sub_network is not None
+
+        # FIXME: ideally exported ports are recalculated on-the-fly within
+        # port_definitions so that we don't have to do extra work in
+        # add_inport / add_outport to keep the exports on the SubNet Component
+        # in sync with its Network (i.e cls.sub_network).  we can't do that as
+        # long as we need to connect ExportComponents within the network,
+        # because that must be done exactly once for all SubNet instances.
+        for (name, internal_port) in cls.sub_network.inports.items():
+            cls.add_inport(name, internal_port)
+
+        for (name, internal_port) in cls.sub_network.outports.items():
+            cls.add_outport(name, internal_port)
+
+    @classmethod
+    def add_inport(cls, name, internal_port):
+        """
+        Expose an InputPort from within the network as a port on this SubNet
+        Component.
 
         Parameters
         ----------
-        internal_port : ``rill.engine.outputport.OutputPort`` or
-                        ``rill.engine.inputport.InputPort``
-            internal port
-        external_port_name : str
+        name : str
             name of external SubNet port to create
+        internal_port : ``rill.engine.inputport.InputPort``
+            internal port
         """
-        # using a component to proxy each exported port has a few side effects:
-        # - additional logging output for the extra components
-        # - additional threads which aren't necessary
-        # - packets are temporarily owned by the SubNet
-        # but it plays well with the rest of the system in a way that is
-        # difficult to achieve otherwise. For example, simply exposing the
-        # internal ports doesn't work because the port's component attr is not
-        # the SubNet, and so the SubNet is never activated by OutputPort.send()
+        portdef = InputPortDefinition.from_port(internal_port)
+        portdef.name = name
+        cls._inport_definitions.append(portdef)
+        subcomp = cls.sub_network.add_component('_' + name, SubIn,
+                                                NAME=name)
+        cls.sub_network.connect(subcomp.ports.OUT, internal_port)
 
-        # FIXME: support exporting an array port to array port. currently,
-        # if you try to do that you'll end up exporting the first element
-        if create:
-            # create a new port on the SubNet based on the exported port
-            def_cls = InputPortDefinition if internal_port.kind == 'in' \
-                else OutputPortDefinition
-            assert isinstance(external_port_name, basestring)
-            portdef = def_cls.from_port(internal_port)
-            portdef.name = external_port_name
-            external_port = portdef.create_port(self)
-            self.ports[external_port_name] = external_port
-        else:
-            external_port = self.port(external_port_name,
-                                      kind=internal_port.kind)
+        # in case this has been called outside of _init_network:
+        if name not in cls.sub_network.inports:
+            cls.sub_network.inports[name] = internal_port
 
-        if external_port.is_array():
-            external_port = external_port.get_element(create=True)
+    @classmethod
+    def remove_inport(cls, name):
+        cls._inport_definitions = [p for p in cls._inport_definitions
+                                   if p.name != name]
+        cls.sub_network.remove_component('_' + name)
 
-        if isinstance(external_port, InputPort):
-            subcomp = self.sub_network.add_component(
-                '_' + external_port.name, SubIn, NAME=external_port._name)
-            if external_port.index is not None:
-                self.initialize(external_port.index, subcomp.ports.INDEX)
-            self.sub_network.connect(subcomp.ports.OUT, internal_port)
-        elif isinstance(external_port, OutputPort):
-            subcomp = self.sub_network.add_component(
-                '_' + external_port.name, SubOut, NAME=external_port._name)
-            if external_port.index is not None:
-                self.initialize(external_port.index, subcomp.ports.INDEX)
-            self.sub_network.connect(internal_port, subcomp.ports.IN)
-        else:
-            raise TypeError()
-        # FIXME: this is ugly, but will have to do until we revisit the overall
-        # structure of subnets
-        subcomp.subnet = self
+    @classmethod
+    def add_outport(cls, name, internal_port):
+        """
+        Expose an OutputPort from within the network as a port on this SubNet
+        Component.
+
+        Parameters
+        ----------
+        name : str
+            name of external SubNet port to create
+        internal_port : ``rill.engine.outputport.OutputPort``
+            internal port
+        """
+        portdef = OutputPortDefinition.from_port(internal_port)
+        portdef.name = name
+        cls._outport_definitions.append(portdef)
+        subcomp = cls.sub_network.add_component('_' + name, SubOut,
+                                                NAME=name)
+        cls.sub_network.connect(internal_port, subcomp.ports.IN)
+
+        # in case this has been called outside of _init_network:
+        if name not in cls.sub_network.outports:
+            cls.sub_network.outports[name] = internal_port
+
+    @classmethod
+    def remove_outport(cls, name):
+        cls._outport_definitions = [p for p in cls._outport_definitions
+                                    if p.name != name]
+        cls.sub_network.remove_component('_' + name)
 
     def execute(self):
         # self.get_components().clear()
-        # FIXME:
+        # FIXME: are these supposed to be the same as null ports?
         sub_end_port = None  # self.outports.get("*SUBEND")
         sub_in_port = None  # self.inports.get("*CONTROL")
         if sub_in_port is not None:
@@ -280,11 +320,6 @@ class SubNet(with_metaclass(ABCMeta, Component)):
         # tracing = parent.tracing
         # trace_file_list = parent.trace_file_list
 
-        # FIXME: run define() as part of init. if we allow dynamic port
-        # creation in define(), which would be great, then it needs to be run
-        # during the net creation phase to know what the ports are. or provide
-        # variable to control when it gets run...
-        # self.define()
         # FIXME: warn if any external ports have not been connected
 
         # if not all(c._check_required_ports() for c in
@@ -387,12 +422,11 @@ def make_subnet(name, net):
     -------
     Type[``SubNet``]
     """
-    def define(self, _):
-        self.sub_network = net
+    def define(cls, _):
+        cls.sub_network = net
 
     attrs = {
         'name': name,
-        'define': define,
-        'sub_network': net
+        'define': classmethod(define)
     }
     return type(name, (SubNet,), attrs)

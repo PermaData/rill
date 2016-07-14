@@ -37,7 +37,8 @@ def submit():
 @outport("OUT")
 @inport("IN")
 class PassthruNet(SubNet):
-    def define(self, net):
+    @classmethod
+    def define(cls, net):
         net.add_component("Pass", Passthru)
         net.export("Pass.OUT", "OUT")
         net.export("Pass.IN", "IN")

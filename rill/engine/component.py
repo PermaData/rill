@@ -37,15 +37,25 @@ class Component(with_metaclass(ABCMeta, object)):
     logger = logger
 
     def __init__(self, name, parent):
+        """
+
+        Parameters
+        ----------
+        name : str
+        parent : ``rill.engine.network.Network``
+        """
         assert name is not None
         self._name = name
 
         # the component's immediate network parent: used for subnet support
         self.parent = parent
+
         # set by the network
+        # type: rill.engine.runner.ComponentRunner
         self._runner = None
 
         # All the input ports are stored here, keyed by name.
+        # type: PortCollection
         self.ports = None
         self.metadata = {}
 
