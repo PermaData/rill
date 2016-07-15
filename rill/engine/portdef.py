@@ -114,7 +114,7 @@ class InputPortDefinition(PortDefinition):
         return InputArray if self.array else InputPort
 
     @classmethod
-    def from_port(cls, port):
+    def from_port(cls, port, **overrides):
         """
         Create a port definition from a port.
 
@@ -126,11 +126,14 @@ class InputPortDefinition(PortDefinition):
         -------
         ``InputPortDefinition``
         """
-        return cls(port._name, type=port.type.type_def, array=port.is_array(),
-                   fixed_size=port.fixed_size if port.is_array() else None,
-                   description=port.description,
-                   required=port.required, static=port.auto_receive,
-                   default=port.default)
+        kwargs = dict(name=port._name, type=port.type.type_def,
+                      array=port.is_array(),
+                      fixed_size=port.fixed_size if port.is_array() else None,
+                      description=port.description,
+                      required=port.required, static=port.auto_receive,
+                      default=port.default)
+        kwargs.update(overrides)
+        return cls(**kwargs)
 
     def get_spec(self):
         spec = super(InputPortDefinition, self).get_spec()
@@ -150,7 +153,7 @@ class OutputPortDefinition(PortDefinition):
         return OutputArray if self.array else OutputPort
 
     @classmethod
-    def from_port(cls, port):
+    def from_port(cls, port, **overrides):
         """
         Create a port definition from a port.
 
@@ -162,10 +165,13 @@ class OutputPortDefinition(PortDefinition):
         -------
         ``OutputPortDefinition``
         """
-        return cls(port._name, type=port.type.type_def, array=port.is_array(),
-                   fixed_size=port.fixed_size if port.is_array() else None,
-                   description=port.description,
-                   required=port.required)
+        kwargs = dict(name=port._name, type=port.type.type_def,
+                      array=port.is_array(),
+                      fixed_size=port.fixed_size if port.is_array() else None,
+                      description=port.description,
+                      required=port.required)
+        kwargs.update(overrides)
+        return cls(**kwargs)
 
     def get_spec(self):
         spec = super(OutputPortDefinition, self).get_spec()

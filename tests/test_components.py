@@ -168,7 +168,7 @@ def test_component_with_inheritance():
     class B(A):
         pass
 
-    assert names(B.port_definitions(), include_null=True) == [
+    assert names(B.port_definitions().values(), include_null=True) == [
         IN_NULL, 'IN', 'OPT', OUT_NULL, 'OUT']
 
     graph = Graph()
@@ -989,7 +989,6 @@ def test_export_of_exports():
     assert definition == expected
 
 
-@pytest.skip('polluting other tests by adding ports')
 def test_network_apply():
     graph = Graph()
     graph.add_component('Add1', Add)
@@ -1011,7 +1010,6 @@ def test_network_apply():
     assert outputs['OUT'] == 10
 
 
-@pytest.skip('polluting other tests by adding ports')
 def test_network_apply_with_outputs():
     graph = Graph()
     graph.add_component('Add1', Add)

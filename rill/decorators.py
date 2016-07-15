@@ -53,7 +53,7 @@ def component(name_or_func=None, **kwargs):
     def decorator(func):
         name_ = name or func.__name__
         attrs = {
-            'name': name_,
+            'type_name': name_,
             '_pass_context': kwargs.get('pass_context', False),
             '_execute': staticmethod(func),
             '__doc__': getattr(func, '__doc__', None),

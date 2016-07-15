@@ -712,7 +712,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         try:
             self.ws.send(json.dumps(message))
         except geventwebsocket.WebSocketError as err:
-            print err
+            print(err)
 
     def send_error(self, protocol, message):
         data = {

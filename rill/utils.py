@@ -61,6 +61,9 @@ class Annotation(object):
         Whether the annotation can be repeated to create a list of values
     default : object
         default value if the annotation is not present
+    attribute : str
+        name of attribute on the decorated object on which to store the
+        annotated value.
     """
     # sub-classes provide:
     multi = False

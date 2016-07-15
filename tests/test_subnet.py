@@ -84,23 +84,45 @@ def test_subnet_decorator():
 
 
 def test_name():
-    graph = Graph()
-    passnet = graph.add_component("Subnet", PassthruNet)
+    root = Graph(name='root')
+    passnet = root.add_component("Subnet", PassthruNet)
     child = passnet.subgraph.component("Pass")
+
+    assert passnet._runner is None
+    assert passnet.get_parents() == []
+    assert passnet.get_full_name() == 'Subnet'
+
+    assert child._runner is None
+    assert child.get_parents() == []
     assert child.get_full_name() == 'Pass'
 
     # a component's full name is not available until all of the graphs' and
     # sub-graphs' runners have been initialized.
     # this is the result of two conflicting requirements:
-    #  - avoid adding state to graphs.  they should be reusable without being
-    #    polluted
-    #  - delay building runners until absolutely necessary
+    #  - graphs should not be modified during execution.  in other words,
+    #    there should be no side-effects.  this means that a graph cannot have
+    #    a parent graph attribute, we must track that relationship elsewhere.
+    #  - delay building runners until absolutely necessary.  this means that
+    #    a component, which *can* have a parent, is not available until the
+    #    graph is executed.
     # we might want to revisit this if it becomes a nuisance.
-    net = Network(graph)
+    net = Network(root)
     net._build_runners()
-    snet = Network(passnet.subgraph)
-    snet.parent_network = passnet._runner.parent_network
-    assert child.get_full_name() == 'Subnet.Pass'
+    assert passnet._runner is not None
+    assert passnet.get_parents() == [root]
+
+    # building the network does a deep copy of the graph and its components
+    snet = passnet._build_network()
+    assert snet.graph is not passnet.subgraph
+    assert child is passnet.subgraph.component('Pass')
+    child_copy = snet.graph.component('Pass')
+    assert child is not child_copy
+    assert type(child) is type(child_copy)
+
+    snet._build_runners()
+    assert child_copy._runner is not None
+    assert snet.parent_network is not None
+    assert child_copy.get_full_name() == 'root.Subnet.Pass'
 
 
 def test_initialize_subnet():

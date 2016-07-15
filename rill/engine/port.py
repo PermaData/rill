@@ -231,8 +231,6 @@ class PortContainerMixin(with_metaclass(ABCMeta, object)):
         """
         Iterate over all ports held by this container.
 
-        This excludes ``ArrayPort``s but includes their members.
-
         Returns
         -------
         Iterable[Union[``rill.engine.inputport.InputPort``, ``rill.engine.outputport.OutputPort``]]
@@ -441,7 +439,7 @@ class BasePortCollection(PortContainerMixin):
 
     def iter_ports(self):
         """
-        Iterate over all ports and their children.
+        Iterate over all ports in the container.
 
         Returns
         -------
@@ -490,8 +488,8 @@ class PortCollection(BasePortCollection):
         names = [p.name for p in ports]
         dupes = [n for n, count in Counter(names).items() if count > 1]
         if dupes:
-            self.component.error(
-                "Duplicate port names: {}".format(', '.join(dupes)))
+            raise FlowError("{}: Duplicate port names: {}".format(
+                self.component, ', '.join(dupes)))
         return ports
 
     def __iter__(self):

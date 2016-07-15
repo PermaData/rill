@@ -6,6 +6,7 @@ python process.
 from collections import defaultdict, OrderedDict
 from inspect import isclass
 import time
+import copy
 
 from future.utils import raise_with_traceback
 from past.builtins import basestring
@@ -38,6 +39,59 @@ class Graph(object):
         # type: Dict[str, rill.engine.inputport.OutputPort]
         self.outports = OrderedDict()
 
+    def __repr__(self):
+        return '{}(name={!r})'.format(self.__class__.__name__, self.name)
+
+    def __getstate__(self):
+        # avoid copying InputPorts and OutputPorts
+        data = self.__dict__.copy()
+        for k in ('inports', 'outports'):
+            data.pop(k)
+
+        inports = []
+        for name, port in self.inports.items():
+            inports.append((name, port.component.name, port._name, port.index))
+        data['inports'] = inports
+
+        outports = []
+        for name, port in self.outports.items():
+            outports.append((name, port.component.name, port._name, port.index))
+        data['outports'] = outports
+        return data
+
+    def __setstate__(self, data):
+        # avoid copying InputPorts and OutputPorts
+        inports = data.pop('inports')
+        outports = data.pop('outports')
+        self.__dict__.update(data)
+        self.inports = OrderedDict()
+        for name, comp_name, port_name, port_index in inports:
+            self.inports[name] = self.get_component_port(
+                (comp_name, port_name), index=port_index)
+        self.outports = OrderedDict()
+        for name, comp_name, port_name, port_index in outports:
+            self.outports[name] = self.get_component_port(
+                (comp_name, port_name), index=port_index)
+
+    def copy(self, deep=True):
+        """
+        Create a deep copy of the graph.
+
+        Returns
+        -------
+        ``Graph``
+        """
+        if deep:
+            return copy.deepcopy(self)
+        else:
+            graph = Graph(self.name, self.default_capacity)
+            graph.inports = self.inports.copy()
+            graph.outports = self.outports.copy()
+            graph._components = self._components.copy()
+            return graph
+
+    # Components --
+
     def add_component(self, name, comp_type, **initializations):
         """
         Instantiate a component and add it to the network.
@@ -59,7 +113,7 @@ class Graph(object):
         if not isclass(comp_type) or not issubclass(comp_type, Component):
             raise TypeError("comp_type must be a sub-class of Component")
 
-        comp = comp_type(name, self)
+        comp = comp_type(name)
         self.put_component(name, comp)
 
         for name, value in initializations.items():
@@ -80,6 +134,7 @@ class Graph(object):
         for outport in component.outports:
             if outport.is_connected():
                 self.disconnect(outport._connection.inport, outport)
+        # FIXME: remove references in self.inports and self.outports
 
     def rename_component(self, orig_name, new_name):
         # FIXME: this needs some love
@@ -144,6 +199,8 @@ class Graph(object):
         comp._init()
         self._components[name] = comp
 
+    # Ports --
+
     def export(self, internal_port, external_port_name):
         """
         Exports component port for connecting to other networks
@@ -163,6 +220,120 @@ class Graph(object):
 
         elif isinstance(internal_port, OutputPort):
             self.outports[external_port_name] = internal_port
+
+    def get_component_port(self, arg, index=None, kind=None):
+        """
+        Get a port on a component.
+
+        Parameters
+        ----------
+        arg : Union[``rill.engine.outputport.OutputPort``, ``rill.engine.inputport.InputPort``, str]
+        index : Optional[int]
+            index of element, if port is an array. If None, the next available
+            index is used
+        kind : str
+            {'in', 'out'}
+
+        Returns
+        -------
+        Union[``rill.engine.outputport.OutputPort``, ``rill.engine.inputport.InputPort``]
+        """
+        if isinstance(arg, (OutputPort, OutputArray, InputPort, InputArray)):
+            port = arg
+            if kind is not None and port.kind != kind:
+                raise FlowError(
+                    "Expected {}port: got {}".format(kind, type(port)))
+        else:
+            if isinstance(arg, (tuple, list)):
+                comp_name, port_name = arg
+            elif isinstance(arg, basestring):
+                comp_name, port_name = arg.split('.')
+            else:
+                raise TypeError(arg)
+
+            comp = self.component(comp_name)
+            port = comp.port(port_name, kind=kind)
+
+        if port.is_array() and index is not False:
+            port = port.get_element(index, create=True)
+
+        return port
+
+    def connect(self, sender, receiver, connection_capacity=None,
+                count_packets=False):
+        """
+        Connect an output port of one component to an input port of another.
+
+        Parameters
+        ----------
+        sender : Union[``rill.engine.inputport.InputPort``, str]
+        receiver : Union[``rill.engine.outputport.OutputPort``, str]
+
+        Returns
+        -------
+        ``rill.engine.inputport.InputPort``
+        """
+        outport = self.get_component_port(sender, kind='out')
+        inport = self.get_component_port(receiver, kind='in')
+        assert not outport.is_array()
+        assert not inport.is_array()
+
+        if connection_capacity is None:
+            connection_capacity = self.default_capacity
+
+        if inport._connection is None:
+            inport._connection = Connection()
+        inport._connection.connect(inport, outport, connection_capacity)
+        return inport
+
+    def disconnect(self, sender, receiver):
+        """
+        Disconnect an output port of one component from an input port of
+        another.
+
+        Parameters
+        ----------
+        sender : Union[``rill.engine.inputport.InputPort``, str]
+        receiver : Union[``rill.engine.outputport.OutputPort``, str]
+        """
+        outport = self.get_component_port(sender, kind='out')
+        inport = self.get_component_port(receiver, kind='in')
+        outport._connection = None
+        inport._connection.outports.remove(outport)
+        if not inport._connection.outports:
+            inport._connection = None
+        else:
+            inport._connection.metadata.pop(outport)
+
+    def initialize(self, content, receiver):
+        """
+        Initialize an inport port with a value
+
+        Parameters
+        ----------
+        content : Any
+        receiver : Union[``rill.engine.inputport.InputPort``, str]
+        """
+        inport = self.get_component_port(receiver, kind='in')
+        inport.initialize(content)
+
+    def uninitialize(self, receiver):
+        """
+        Remove the initialized value of an inport port.
+
+        Parameters
+        ----------
+        receiver : Union[``rill.engine.inputport.InputPort``, str]
+
+        Returns
+        -------
+        ``rill.engine.inputport.InitializationConnection``
+            The removed initialization connection
+        """
+        inport = self.get_component_port(receiver, kind='in')
+        return inport.uninitialize()
+
+    # Serialization --
 
     def to_dict(self):
         """
@@ -298,118 +469,6 @@ class Graph(object):
             net.export(_port(outport), name)
 
         return net
-
-    def get_component_port(self, arg, index=None, kind=None):
-        """
-        Get a port on a component.
-
-        Parameters
-        ----------
-        arg : Union[``rill.engine.outputport.OutputPort``, ``rill.engine.inputport.InputPort``, str]
-        index : Optional[int]
-            index of element, if port is an array. If None, the next available
-            index is used
-        kind : str
-            {'in', 'out'}
-
-        Returns
-        -------
-        port : Union[``rill.engine.outputport.OutputPort``, ``rill.engine.inputport.InputPort``]
-        """
-        if isinstance(arg, (OutputPort, OutputArray, InputPort, InputArray)):
-            port = arg
-            if kind is not None and port.kind != kind:
-                raise FlowError(
-                    "Expected {}port: got {}".format(kind, type(port)))
-        else:
-            if isinstance(arg, (tuple, list)):
-                comp_name, port_name = arg
-            elif isinstance(arg, basestring):
-                comp_name, port_name = arg.split('.')
-            else:
-                raise TypeError(arg)
-
-            comp = self.component(comp_name)
-            port = comp.port(port_name, kind=kind)
-
-        if port.is_array() and index is not False:
-            port = port.get_element(index, create=True)
-
-        return port
-
-    def connect(self, sender, receiver, connection_capacity=None,
-                count_packets=False):
-        """
-        Connect an output port of one component to an input port of another.
-
-        Parameters
-        ----------
-        sender : Union[``rill.engine.inputport.InputPort``, str]
-        receiver : Union[``rill.engine.outputport.OutputPort``, str]
-
-        Returns
-        -------
-        ``rill.engine.inputport.InputPort``
-        """
-        outport = self.get_component_port(sender, kind='out')
-        inport = self.get_component_port(receiver, kind='in')
-        assert not outport.is_array()
-        assert not inport.is_array()
-
-        if connection_capacity is None:
-            connection_capacity = self.default_capacity
-
-        if inport._connection is None:
-            inport._connection = Connection()
-        inport._connection.connect(inport, outport, connection_capacity)
-        return inport
-
-    def disconnect(self, sender, receiver):
-        """
-        Disconnect an output port of one component from an input port of
-        another.
-
-        Parameters
-        ----------
-        sender : Union[``rill.engine.inputport.InputPort``, str]
-        receiver : Union[``rill.engine.outputport.OutputPort``, str]
-        """
-        outport = self.get_component_port(sender, kind='out')
-        inport = self.get_component_port(receiver, kind='in')
-        outport._connection = None
-        inport._connection.outports.remove(outport)
-        if not inport._connection.outports:
-            inport._connection = None
-        else:
-            inport._connection.metadata.pop(outport)
-
-    def initialize(self, content, receiver):
-        """
-        Initialize an inport port with a value
-
-        Parameters
-        ----------
-        content : Any
-        receiver : Union[``rill.engine.inputport.InputPort``, str]
-        """
-        inport = self.get_component_port(receiver, kind='in')
-        inport.initialize(content)
-
-    def uninitialize(self, receiver):
-        """
-        Remove the initialized value of an inport port.
-
-        Parameters
-        ----------
-        receiver : Union[``rill.engine.inputport.InputPort``, str]
-
-        Returns
-        -------
-        ``rill.engine.inputport.InitializationConnection``
-            The removed initialization connection
-        """
-        inport = self.get_component_port(receiver, kind='in')
-        return inport.uninitialize()
 
 
 class Network(object):
@@ -805,7 +864,7 @@ def apply_graph(graph, inputs, outports=None):
     Dict[str, Any]
         map network outport names to captured values
     """
-    from rill.engine.subnet import make_subnet
+    from rill.engine.subnet import make_subgraph
     from rill.components.basic import Capture
 
     if outports is None:
@@ -814,7 +873,7 @@ def apply_graph(graph, inputs, outports=None):
 
     # use a wrapper so we don't modify the passed graph
     wrapper = Graph()
-    apply = graph.add_component('Apply', make_subnet('Apply', graph))
+    apply = wrapper.add_component('Apply', make_subgraph('Apply', graph))
 
     for (port_name, content) in inputs.items():
         wrapper.initialize(content, apply.port(port_name))
