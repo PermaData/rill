@@ -36,19 +36,22 @@ class Component(with_metaclass(ABCMeta, object)):
     # same as module-level logger, but provided here for convenience
     logger = logger
 
-    def __init__(self, name, parent):
+    def __init__(self, name, graph):
         """
 
         Parameters
         ----------
         name : str
-        parent : ``rill.engine.network.Network``
+        graph : ``rill.engine.network.Graph``
         """
         assert name is not None
         self._name = name
 
+        # the component's immediate graph parent: used for subnet support
+        self.graph = graph
+
         # the component's immediate network parent: used for subnet support
-        self.parent = parent
+        # self.parent = None
 
         # set by the network
         # type: rill.engine.runner.ComponentRunner
@@ -100,24 +103,18 @@ class Component(with_metaclass(ABCMeta, object)):
         -------
         ``rill.engine.network.Network``
         """
-        return self.get_parents()[0]
+        return self._runner.network
 
     @cache
     def get_parents(self):
         """
         Returns
         -------
-        List[``rill.engine.network.Network``]
+        List[``rill.engine.network.Graph``]
         """
-        parent = self.parent
-        parents = []
-        while True:
-            if parent is None:
-                break
-            parents.append(parent)
-            parent = parent.parent
-        parents.reverse()
-        return parents
+        if self._runner is None:
+            return []
+        return [p.graph for p in self._runner.get_parents()]
 
     def get_children(self):
         """
@@ -172,13 +169,13 @@ class Component(with_metaclass(ABCMeta, object)):
         dict
         """
         import textwrap
-        from rill.engine.subnet import SubNet
+        from rill.engine.subnet import SubGraph
 
         return {
             'name': cls.get_type(),
             'description': textwrap.dedent(cls.__doc__ or '').strip(),
             #'icon': '',
-            'subgraph': issubclass(cls, SubNet),
+            'subgraph': issubclass(cls, SubGraph),
             'inPorts': [
                 indef.get_spec()
                 for indef in cls.inport_definitions

@@ -9,6 +9,7 @@ from rill.engine.utils import LogFormatter
 from rill.engine.status import StatusValues
 from rill.engine.exceptions import FlowError, ComponentError
 from rill.engine.port import OUT_NULL, IN_NULL
+from rill.utils import cache
 
 
 class ComponentRunner(Greenlet):
@@ -23,11 +24,12 @@ class ComponentRunner(Greenlet):
     """
     logger = LogFormatter(logging.getLogger("component.runner"), {})
 
-    def __init__(self, component):
+    def __init__(self, component, parent):
         """
         Parameters
         ----------
         component : ``rill.engine.component.Component``
+        parent : ``rill.engine.network.Network``
         """
         Greenlet.__init__(self)
 
@@ -41,7 +43,9 @@ class ComponentRunner(Greenlet):
         # the "automatic" output port
         self._null_output = None
 
-        self.network = component.network
+        # the component's immediate network parent
+        self.parent_network = parent
+
         self.has_run = False
 
         # used when evaluating component statuses for deadlocks
@@ -65,17 +69,46 @@ class ComponentRunner(Greenlet):
             data.pop(k)
         return data
 
+    # FIXME: rename to root_network
+    @property
+    def network(self):
+        """
+        The root network.
+
+        Returns
+        -------
+        ``rill.engine.network.Network``
+        """
+        return self.get_parents()[0]
+
+    @cache
+    def get_parents(self):
+        """
+        Returns
+        -------
+        List[``rill.engine.network.Network``]
+        """
+        parent = self.parent_network
+        parents = []
+        while True:
+            if parent is None:
+                break
+            parents.append(parent)
+            parent = parent.parent_network
+        parents.reverse()
+        return parents
+
     def error(self, msg, errtype=FlowError):
         self.component.error(msg, errtype)
 
     # FIXME: figure out the logging stuff
     def trace_funcs(self, msg, section='funcs'):
         self.logger.debug(msg)
-        # self.parent.trace_funcs(self, msg)
+        # self.parent_network.trace_funcs(self, msg)
 
     def trace_locks(self, msg, **kwargs):
         self.logger.debug(msg, section='locks', **kwargs)
-        # self.parent.trace_locks(self, msg)
+        # self.parent_network.trace_locks(self, msg)
 
     # Ports --
 
@@ -158,7 +191,7 @@ class ComponentRunner(Greenlet):
             child._runner.terminate(new_status)
         self.logger.debug("Terminated", component=self)
         self.status = new_status
-        # self.parent.indicate_terminated(self)
+        # self.parent_network.indicate_terminated(self)
         # FIXME: Thread.interrupt()
 
     # def long_wait_start(self, intvl):  # interval in seconds!
@@ -340,7 +373,7 @@ class ComponentRunner(Greenlet):
 
             if self.component.stack_size() != 0:
                 self.error("Compodenent terminated with stack not empty")
-            self.component.parent.indicate_terminated(self)
+            self.parent_network.indicate_terminated(self)
 
         except ComponentError as e:
             # FIXME:
@@ -350,9 +383,9 @@ class ComponentRunner(Greenlet):
                     self.logger.error(
                         "terminated with exception code " + e.get_value())
 
-                    if self.parent is not None:
+                    if self.parent_network is not None:
                         # record the error and terminate siblings
-                        self.parent.signal_error(e)
+                        self.parent_network.signal_error(e)
                     self.close_ports()
             raise GreenletExit()
 
@@ -369,9 +402,9 @@ class ComponentRunner(Greenlet):
 
             self.status = StatusValues.ERROR
 
-            if self.component.parent is not None:
+            if self.parent_network is not None:
                 # record the error and terminate siblings
-                self.component.parent.signal_error(e)
+                self.parent_network.signal_error(e)
             self.close_ports()
 
     def active(self):

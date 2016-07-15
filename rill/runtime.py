@@ -16,10 +16,13 @@ from past.builtins import basestring
 
 from rill.engine.component import Component
 from rill.engine.inputport import Connection
-from rill.engine.network import Network
-from rill.engine.subnet import SubNet
+from rill.engine.network import Graph, Network
+from rill.engine.subnet import SubGraph
 from rill.engine.types import FBP_TYPES
 from rill.engine.exceptions import FlowError
+
+from typing import Union, Any, Iterator, Dict
+
 
 logger = logging.getLogger(__name__)
 _initialized = False
@@ -187,13 +190,13 @@ def init():
     _initialized = True
 
 
-def get_graph_messages(net, graph_id):
+def get_graph_messages(graph, graph_id):
     """
     Create graph protocol messages to build graph for receiver
 
     Params
     ------
-    net : ``rill.engine.network.Network``
+    net : ``rill.engine.network.Graph``
     graph_id : str
         id of graph to serialize
 
@@ -202,11 +205,11 @@ def get_graph_messages(net, graph_id):
     Iterator[Dict[str, Any]]
         graph protocol messages that reproduce graph
     """
-    definition = net.to_dict()
+    definition = graph.to_dict()
 
     yield ('clear', {
         'id': graph_id,
-        'name': net.name
+        'name': graph.name
     })
 
     def port_msg(p):
@@ -255,7 +258,7 @@ class Runtime(object):
     """
     Rill runtime for python
 
-    A ``Runtime`` instance holds many ``rill.engine.network.Network`` instances
+    A ``Runtime`` instance holds many ``rill.engine.network.Graph`` instances
     each running on their own greelent.
     """
     PROTOCOL_VERSION = '0.5'
@@ -265,7 +268,9 @@ class Runtime(object):
                                                    self.__class__.__name__))
 
         self._component_types = {}  # Component metadata, keyed by component name
+        # type: Dict[str, Graph]
         self._graphs = {}  # Graph instances, keyed by graph ID
+        # type: Dict[str, Tuple[Greenlet, Network]]
         self._executors = {}  # GraphExecutor instances, keyed by graph ID
 
         self.logger.debug('Initialized runtime!')
@@ -376,7 +381,7 @@ class Runtime(object):
             if (inspect.isclass(class_obj) and
                     class_obj is not Component and
                     not inspect.isabstract(class_obj) and
-                    not issubclass(class_obj, SubNet) and
+                    not issubclass(class_obj, SubGraph) and
                     issubclass(class_obj, Component)):
                 self.register_component(class_obj, overwrite)
                 registered += 1
@@ -404,7 +409,7 @@ class Runtime(object):
         if graph_id not in self._graphs:
             self.new_graph(graph_id)
         started = graph_id in self._executors
-        running = started and not self._executors[graph_id].ready()
+        running = started and not self._executors[graph_id][0].ready()
         print("get_status.  started {}, running {}".format(started, running))
         return started, running
 
@@ -416,14 +421,15 @@ class Runtime(object):
 
         graph = self.get_graph(graph_id)
 
-        executor = gevent.Greenlet(graph.go)
+        network = Network(graph)
+        executor = gevent.Greenlet(network.go)
         # FIXME: should we delete the executor from self._executors on finish?
         # this has an impact on the result returned from get_status().  Leaving
         # it means that after completion it will be started:True, running:False
         # until stop() is triggered, at which point it will be started:False,
         # running:False
         executor.link(lambda g: done_callback())
-        self._executors[graph_id] = executor
+        self._executors[graph_id] = (executor, network)
         executor.start()
         # if executor.is_running():
         #     raise ValueError('Graph {} is already started'.format(graph_id))
@@ -436,9 +442,8 @@ class Runtime(object):
         if graph_id not in self._executors:
             raise ValueError('Invalid graph: {}'.format(graph_id))
 
-        graph = self.get_graph(graph_id)
-        graph.terminate()
-        executor = self._executors[graph_id]
+        executor, network = self._executors[graph_id]
+        network.terminate()
         executor.join()
         del self._executors[graph_id]
 
@@ -465,7 +470,7 @@ class Runtime(object):
 
         Returns
         -------
-        graph : ``rill.engine.network.Network``
+        graph : ``rill.engine.network.Graph``
             the graph object.
         """
         try:
@@ -478,14 +483,14 @@ class Runtime(object):
         Create a new graph.
         """
         self.logger.debug('Graph {}: Initializing'.format(graph_id))
-        self.add_graph(graph_id, Network())
+        self.add_graph(graph_id, Graph())
 
     def add_graph(self, graph_id, graph):
         """
         Parameters
         ----------
         graph_id : str
-        graph : ``rill.engine.network.Network``
+        graph : ``rill.engine.network.Graph``
         """
         self._graphs[graph_id] = graph
 

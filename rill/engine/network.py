@@ -21,24 +21,15 @@ from rill.engine.inputport import Connection, InputPort, InputArray, Initializat
 from rill.engine.utils import CountDownLatch
 
 
-class Network(object):
+class Graph(object):
     """
-    A network of comonents.
+    A graph of ``Components``
     """
-
-    def __init__(self, default_capacity=10, deadlock_test_interval=1,
-                 name=None):
-        # self.logger = logger
+    def __init__(self, name=None, default_capacity=10):
         self.name = name
-        # parent Network: set by SubNet
-        # type: Network
-        self.parent = None
         self.default_capacity = default_capacity
-        self.deadlock_test_interval = deadlock_test_interval
 
-        self.active = False  # used for deadlock detection
-
-        # type: Dict[str, rill.engine.runner.ComponentRunner]
+        # type: Dict[str, rill.engine.component.Component]
         self._components = OrderedDict()
 
         # exported inports and outports
@@ -46,72 +37,6 @@ class Network(object):
         self.inports = OrderedDict()
         # type: Dict[str, rill.engine.inputport.OutputPort]
         self.outports = OrderedDict()
-
-        # FIXME: not used
-        self.timeouts = {}
-
-        # variables with a life-span of one run (set by reset()):
-
-        # FIXME: get rid of this. using gevent.iwait now
-        self.cdl = None
-
-        self.runners = None
-        # globals is a global synchronized_map intended for real global use.
-        # It is not intended for component-to-component communication.
-        self.globals = None
-        self.deadlock = None
-
-        # holds the first error raised
-        self.error = None
-        self._abort = None
-        # for use by list_comp_status(). here for post-mortem inspection
-        self.msgs = None
-
-        # type: Dict[rill.engine.inputports.Connection, int]
-        self._packet_counts = None
-
-        # FIXME: these were AtomicInteger instances, with built-in locking.
-        # might not be safe to make them regular ints
-        self.sends = self.receives = self.creates = self.drops = self.drop_olds = None
-
-    def __getstate__(self):
-        data = self.__dict__.copy()
-        for k in ('cdl', 'runners', 'msgs'):
-            data.pop(k)
-        if self.runners is not None:
-            runners = {}
-            for name, runner in self.runners.items():
-                runners[name] = runner.status
-            data['runners'] = runners
-        return data
-
-    def __setstate__(self, data):
-        runners = data.pop('runners', None)
-        self.__dict__.update(data)
-        if runners is not None:
-            self._build_runners()
-            for name, status in runners.items():
-                self.runners[name].status = status
-
-    def reset(self):
-        # freq = 0.5 if self.deadlock_test_interval else None
-        # self.cdl = CountDownLatch(len(self._components), freq)
-
-        self.globals = {}
-        self.deadlock = False
-        self.error = None
-        self._abort = False
-        self.msgs = []
-        self._packet_counts = defaultdict(int)
-
-        self.receives = 0
-        self.sends = 0
-        self.creates = 0
-        self.drops = 0
-        self.drop_olds = 0
-
-        for name, comp in self._components.items():
-            comp.init()
 
     def add_component(self, name, comp_type, **initializations):
         """
@@ -121,7 +46,7 @@ class Network(object):
         ----------
         name : str
             name of component
-        comp_type : ``rill.engine.component.Component`` class
+        comp_type : Type[``rill.engine.component.Component``]
             component class to instantiate
 
         Returns
@@ -146,7 +71,7 @@ class Network(object):
 
     def remove_component(self, name):
         # FIXME: this needs some love
-        assert not self.active
+        # assert not self.active
         component = self._components.pop(name)
         for inport in component.inports:
             if inport.is_connected() and not inport.is_static():
@@ -158,7 +83,7 @@ class Network(object):
 
     def rename_component(self, orig_name, new_name):
         # FIXME: this needs some love
-        assert not self.active
+        # assert not self.active
         assert new_name not in self._components
         component = self._components.pop(orig_name)
         self._components[new_name] = component
@@ -183,6 +108,197 @@ class Network(object):
             raise FlowError("Reference to unknown component " + name)
         return comp
 
+    def get_components(self):
+        """
+        Get a dictionary of components in this network
+
+        Returns
+        -------
+        Dict[str, ``rill.enginge.component.Component``]
+        """
+        return self._components
+
+    def get_component(self, name):
+        """
+        Returns the requested component in this network if present or None
+        if not present.
+
+        Returns
+        -------
+        ``rill.enginge.component.Component``
+        """
+        return self._components.get(name)
+
+    # FIXME: remove this and run/move Component._init to __init__
+    def put_component(self, name, comp):
+        """
+        Adds a component and inits it.
+
+        Parameters
+        ----------
+        name : str
+        comp : ``rill.enginge.component.Component``
+        """
+        # initialize the component's ports so they can be used for network
+        # building
+        comp._init()
+        self._components[name] = comp
+
+    def export(self, internal_port, external_port_name):
+        """
+        Exports component port for connecting to other networks
+        as a sub network
+
+        Parameters
+        ----------
+        internal_port : ``rill.engine.outputport.OutputPort`` or
+            ``rill.engine.inputport.InputPort`` or str
+        external_port_name : str
+            name of port that will be exposed
+        """
+        internal_port = self.get_component_port(internal_port)
+
+        if isinstance(internal_port, InputPort):
+            self.inports[external_port_name] = internal_port
+
+        elif isinstance(internal_port, OutputPort):
+            self.outports[external_port_name] = internal_port
+
+    def to_dict(self):
+        """
+        Serialize network to dictionary
+
+        Returns
+        -------
+        definition : dict
+            json-serializable representation of network according to fbp json
+            standard
+        """
+        def portdef(cname, p):
+            doc = {
+                'process': cname,
+                # FIXME: it should be easier to get this value from BasePort
+                'port': p._name if p.is_element() else p.name
+            }
+            if p.is_element():
+                doc['index'] = p.index
+            return doc
+
+        definition = {
+            'processes': {},
+            'connections': [],
+            'inports': {},
+            'outports': {}
+        }
+        for (comp_name, component) in self.get_components().items():
+            if component.hidden:
+                continue
+
+            definition['processes'][comp_name] = {
+                "component": component.get_type(),
+                "metadata": component.metadata,
+            }
+
+            for inport in component.inports:
+                if not inport.is_connected():
+                    continue
+
+                conn = inport._connection
+                if isinstance(conn, InitializationConnection):
+                    content = conn._content
+                    content = inport.type.to_primitive(content)
+                    connection = {
+                        'src': {'data': content},
+                        'tgt': portdef(comp_name, inport)
+                    }
+                    if conn.metadata:
+                        connection['metadata'] = conn.metadata
+                    definition['connections'].append(connection)
+                else:
+                    for outport in conn.outports:
+                        if outport.component.hidden:
+                            continue
+
+                        sender = outport.component
+                        connection = {
+                            'src': portdef(sender.get_name(), outport),
+                            'tgt': portdef(comp_name, inport)
+                        }
+                        # keyed on outport
+                        metadata = conn.metadata.get(outport, None)
+                        if metadata:
+                            connection['metadata'] = metadata
+                        definition['connections'].append(connection)
+
+        for (name, inport) in self.inports.items():
+            definition['inports'][name] = {
+                'process': inport.component.get_name(),
+                'port': inport.name
+            }
+
+        for (name, outport) in self.outports.items():
+            definition['outports'][name] = {
+                'process': outport.component.get_name(),
+                'port': outport.name
+            }
+
+        return definition
+
+    @classmethod
+    def from_dict(cls, definition, component_lookup=None):
+        """
+        Create network from serialized definition
+
+        Parameters
+        ----------
+        definition : dict
+            network structure according to fbp json standard
+        component_lookup : Dict[str, ``rill.enginge.component.Component``]
+            maps of component name to component
+
+        Returns
+        -------
+        ``rill.enginge.network.Network``
+        """
+        import pydoc
+
+        def _port(p):
+            return net.get_component_port((p['process'], p['port']),
+                                          index=p.get('index', None))
+
+        net = cls()
+        for (name, spec) in definition['processes'].items():
+            if component_lookup:
+                comp_class = component_lookup[spec['component']]
+            else:
+                comp_class = pydoc.locate(spec['component'].replace('/', '.'))
+                if comp_class is None:
+                    raise FlowError("Could not find component {}".format(
+                        spec['component']))
+            component = net.add_component(name, comp_class)
+            if spec.get('metadata'):
+                component.metadata.update(spec['metadata'])
+
+        for connection in definition['connections']:
+            tgt = _port(connection['tgt'])
+            if 'data' in connection['src']:
+                # static initializer
+                content = connection['src']['data']
+                content = tgt.type.to_native(content)
+                net.initialize(content, tgt)
+            else:
+                # connection
+                src = _port(connection['src'])
+                net.connect(src, tgt)
+
+        for (name, inport) in definition['inports'].items():
+            net.export(_port(inport), name)
+
+        for (name, outport) in definition['outports'].items():
+            net.export(_port(outport), name)
+
+        return net
+
     def get_component_port(self, arg, index=None, kind=None):
         """
         Get a port on a component.
@@ -193,7 +309,8 @@ class Network(object):
         index : Optional[int]
             index of element, if port is an array. If None, the next available
             index is used
-        kind : {'in', 'out'}
+        kind : str
+            {'in', 'out'}
 
         Returns
         -------
@@ -294,6 +411,96 @@ class Network(object):
         inport = self.get_component_port(receiver, kind='in')
         return inport.uninitialize()
 
+
+class Network(object):
+    """
+    Responsible for executing a ``Graph`` instance.
+    """
+
+    def __init__(self, graph, deadlock_test_interval=1):
+        """
+
+        Parameters
+        ----------
+        graph : ``Graph``
+        deadlock_test_interval : int
+        """
+        # self.logger = logger
+        # type: Graph
+        self.graph = graph
+        # parent Network: set by SubGraph
+        # type: Network
+        self.parent_network = None
+        self.deadlock_test_interval = deadlock_test_interval
+
+        self.active = False  # used for deadlock detection
+
+        # FIXME: not used
+        self.timeouts = {}
+
+        # variables with a life-span of one run (set by reset()):
+
+        # FIXME: get rid of this. using gevent.iwait now
+        self.cdl = None
+
+        self.runners = None
+        # globals is a global synchronized_map intended for real global use.
+        # It is not intended for component-to-component communication.
+        self.globals = None
+        self.deadlock = None
+
+        # holds the first error raised
+        self.error = None
+        self._abort = None
+        # for use by list_comp_status(). here for post-mortem inspection
+        self.msgs = None
+
+        # type: Dict[rill.engine.inputports.Connection, int]
+        self._packet_counts = None
+
+        # FIXME: these were AtomicInteger instances, with built-in locking.
+        # might not be safe to make them regular ints
+        self.sends = self.receives = self.creates = self.drops = self.drop_olds = None
+
+    def __getstate__(self):
+        data = self.__dict__.copy()
+        for k in ('cdl', 'runners', 'msgs'):
+            data.pop(k)
+        if self.runners is not None:
+            runners = {}
+            for name, runner in self.runners.items():
+                runners[name] = runner.status
+            data['runners'] = runners
+        return data
+
+    def __setstate__(self, data):
+        runners = data.pop('runners', None)
+        self.__dict__.update(data)
+        if runners is not None:
+            self._build_runners()
+            for name, status in runners.items():
+                self.runners[name].status = status
+
+    def reset(self):
+        # freq = 0.5 if self.deadlock_test_interval else None
+        # self.cdl = CountDownLatch(len(self._components), freq)
+
+        self.globals = {}
+        self.deadlock = False
+        self.error = None
+        self._abort = False
+        self.msgs = []
+        self._packet_counts = defaultdict(int)
+
+        self.receives = 0
+        self.sends = 0
+        self.creates = 0
+        self.drops = 0
+        self.drop_olds = 0
+
+        for name, comp in self.graph._components.items():
+            comp.init()
+
     def go(self, resume=False):
         """
         Execute the network
@@ -354,8 +561,8 @@ class Network(object):
         Populate `self.runners` with a runner for each component.
         """
         self.runners = OrderedDict()
-        for name, comp in self._components.items():
-            runner = ComponentRunner(comp)
+        for name, comp in self.graph._components.items():
+            runner = ComponentRunner(comp, self)
             comp._runner = runner
             self.runners[name] = runner
             runner.status = StatusValues.NOT_STARTED
@@ -492,13 +699,13 @@ class Network(object):
         bool
             whether the network is deadlocked
         """
-        from rill.engine.subnet import SubNet
+        from rill.engine.subnet import SubGraph
         # Messages are added to list, rather than written directly,
         # in case it is not a self.deadlock
 
         terminated = True
         for runner in self.runners.values():
-            if isinstance(runner, SubNet):
+            if isinstance(runner, SubGraph):
                 # consider components of subnets
                 if not runner.sub_network.list_comp_status(msgs):
                     return False
@@ -575,206 +782,19 @@ class Network(object):
         """
         self._packet_counts[connection] += 1
 
-    def get_components(self):
-        """
-        Get a dictionary of components in this network
 
-        Returns
-        -------
-        Dict[str, ``rill.enginge.component.Component``]
-        """
-        return self._components
-
-    def get_component(self, name):
-        """
-        Returns the requested component in this network if present or None
-        if not present.
-
-        Returns
-        -------
-        ``rill.enginge.component.Component``
-        """
-        return self._components.get(name)
-
-    # FIXME: remove this and run/move Component._init to __init__
-    def put_component(self, name, comp):
-        """
-        Adds a component and inits it.
-
-        Parameters
-        ----------
-        name : str
-        comp : ``rill.enginge.component.Component``
-        """
-        # initialize the component's ports so they can be used for network
-        # building
-        comp._init()
-        self._components[name] = comp
-
-    def export(self, internal_port, external_port_name):
-        """
-        Exports component port for connecting to other networks
-        as a sub network
-
-        Parameters
-        ----------
-        internal_port : ``rill.engine.outputport.OutputPort`` or
-            ``rill.engine.inputport.InputPort`` or str
-        external_port_name : str
-            name of port that will be exposed
-        """
-        internal_port = self.get_component_port(internal_port)
-
-        if isinstance(internal_port, InputPort):
-            self.inports[external_port_name] = internal_port
-
-        elif isinstance(internal_port, OutputPort):
-            self.outports[external_port_name] = internal_port
-
-    def to_dict(self):
-        """
-        Serialize network to dictionary
-
-        Returns
-        -------
-        definition : dict
-            json-serializable representation of network according to fbp json
-            standard
-        """
-        def portdef(cname, p):
-            doc = {
-                'process': cname,
-                # FIXME: it should be easier to get this value from BasePort
-                'port': p._name if p.is_element() else p.name
-            }
-            if p.is_element():
-                doc['index'] = p.index
-            return doc
-
-        definition = {
-            'processes': {},
-            'connections': [],
-            'inports': {},
-            'outports': {}
-        }
-        for (comp_name, component) in self.get_components().items():
-            if component.hidden:
-                continue
-
-            definition['processes'][comp_name] = {
-                "component": component.get_type(),
-                "metadata": component.metadata
-            }
-
-            for inport in component.inports:
-                if not inport.is_connected():
-                    continue
-
-                conn = inport._connection
-                if isinstance(conn, InitializationConnection):
-                    content = conn._content
-                    content = inport.type.to_primitive(content)
-                    connection = {
-                        'src': {'data': content},
-                        'tgt': portdef(comp_name, inport)
-                    }
-                    if conn.metadata:
-                        connection['metadata'] = conn.metadata
-                    definition['connections'].append(connection)
-                else:
-                    for outport in conn.outports:
-                        if outport.component.hidden:
-                            continue
-
-                        sender = outport.component
-                        connection = {
-                            'src': portdef(sender.get_name(), outport),
-                            'tgt': portdef(comp_name, inport)
-                        }
-                        # keyed on outport
-                        metadata = conn.metadata.get(outport, None)
-                        if metadata:
-                            connection['metadata'] = metadata
-                        definition['connections'].append(connection)
-
-        for (name, inport) in self.inports.items():
-            definition['inports'][name] = {
-                'process': inport.component.get_name(),
-                'port': inport.name
-            }
-
-        for (name, outport) in self.outports.items():
-            definition['outports'][name] = {
-                'process': outport.component.get_name(),
-                'port': outport.name
-            }
-
-        return definition
-
-    @classmethod
-    def from_dict(cls, definition, component_lookup=None):
-        """
-        Create network from serialized definition
-
-        Parameters
-        ----------
-        definition : dict
-            network structure according to fbp json standard
-        component_lookup : Dict[str, ``rill.enginge.component.Component``]
-            maps of component name to component
-
-        Returns
-        -------
-        ``rill.enginge.network.Network``
-        """
-        import pydoc
-
-        def _port(p):
-            return net.get_component_port((p['process'], p['port']),
-                                          index=p.get('index', None))
-
-        net = cls()
-        for (name, spec) in definition['processes'].items():
-            if component_lookup:
-                comp_class = component_lookup[spec['component']]
-            else:
-                comp_class = pydoc.locate(spec['component'].replace('/', '.'))
-                if comp_class is None:
-                    raise FlowError("Could not find component {}".format(
-                        spec['component']))
-            component = net.add_component(name, comp_class)
-            if spec.get('metadata'):
-                component.metadata.update(spec['metadata'])
-
-        for connection in definition['connections']:
-            tgt = _port(connection['tgt'])
-            if 'src' in connection:
-                # connection
-                src = _port(connection['src'])
-                net.connect(src, tgt)
-            else:
-                # static initializer
-                content = connection['data']
-                content = tgt.type.to_native(content)
-                net.initialize(content, tgt)
-
-        for (name, inport) in definition['inports'].items():
-            net.export(_port(inport), name)
-
-        for (name, outport) in definition['outports'].items():
-            net.export(_port(outport), name)
-
-        return net
+def run_graph(graph):
+    Network(graph).go()
 
 
-def apply_network(network, inputs, outports=None):
+def apply_graph(graph, inputs, outports=None):
     """
     Apply network like a function treating iips as arguments to inports
     and returning the values of outports
 
     Parameters
     ----------
-    network : ``rill.engine.network.Network``
+    graph : ``rill.engine.network.Graph``
     inputs : Dict[str, Any]
         map of inport names to initial content
     outports : Optional[List[str]]
@@ -790,11 +810,11 @@ def apply_network(network, inputs, outports=None):
 
     if outports is None:
         # FIXME: I believe this should default to *unconnected* output ports
-        outports = network.outports.keys()
+        outports = graph.outports.keys()
 
-    wrapper = Network()
-    apply = wrapper.add_component('ApplyNet',
-                                  make_subnet('ApplyNet', network))
+    # use a wrapper so we don't modify the passed graph
+    wrapper = Graph()
+    apply = graph.add_component('Apply', make_subnet('Apply', graph))
 
     for (port_name, content) in inputs.items():
         wrapper.initialize(content, apply.port(port_name))
@@ -807,7 +827,7 @@ def apply_network(network, inputs, outports=None):
             wrapper.connect(apply.port(port_name), capture.port('IN'))
             captures[port_name] = capture
 
-    wrapper.go()
+    run_graph(wrapper)
 
     if outports is not False:
         return {name: capture.value for (name, capture) in captures.items()}

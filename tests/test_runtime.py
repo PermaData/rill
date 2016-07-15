@@ -1,6 +1,6 @@
 from rill.engine.runner import ComponentRunner
 from rill.runtime import Runtime, get_graph_messages
-from rill.engine.network import Network
+from rill.engine.network import Graph
 
 from tests.components import *
 
@@ -8,22 +8,22 @@ import logging
 ComponentRunner.logger.setLevel(logging.DEBUG)
 
 
-def get_network(graph_name):
-    net = Network(name=graph_name)
+def get_graph(graph_name):
+    graph = Graph(name=graph_name)
 
-    gen = net.add_component('Generate', GenerateTestData)
+    gen = graph.add_component('Generate', GenerateTestData)
     gen.metadata['x'] = 5
     gen.metadata['y'] = 5
 
-    passthru = net.add_component('Pass', Passthru)
-    outside = net.add_component('Outside', Passthru)
+    passthru = graph.add_component('Pass', Passthru)
+    outside = graph.add_component('Outside', Passthru)
 
-    net.connect('Generate.OUT', 'Pass.IN')
-    net.connect('Outside.OUT', 'Pass.IN')
-    net.initialize(5, 'Generate.COUNT')
-    net.export('Pass.OUT', 'OUTPORT')
-    net.export('Outside.IN', 'INPORT')
-    return net, gen, passthru, outside
+    graph.connect('Generate.OUT', 'Pass.IN')
+    graph.connect('Outside.OUT', 'Pass.IN')
+    graph.initialize(5, 'Generate.COUNT')
+    graph.export('Pass.OUT', 'OUTPORT')
+    graph.export('Outside.IN', 'INPORT')
+    return graph, gen, passthru, outside
 
 
 # FIXME: create a fixture for the network in test_network_serialization and use that here
@@ -36,8 +36,8 @@ def test_get_graph_messages():
     runtime = Runtime()
     runtime.new_graph(graph_id)
 
-    net, gen, passthru, outside = get_network(graph_name)
-    runtime.add_graph(graph_id, net)
+    graph, gen, passthru, outside = get_graph(graph_name)
+    runtime.add_graph(graph_id, graph)
 
     messages = list(get_graph_messages(runtime.get_graph(graph_id), graph_id))
 

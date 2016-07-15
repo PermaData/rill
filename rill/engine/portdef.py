@@ -26,6 +26,9 @@ class PortDefinition(object):
         self.description = description
         self.fixed_size = fixed_size
 
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, repr(self.name))
+
     @property
     def data(self):
         """
