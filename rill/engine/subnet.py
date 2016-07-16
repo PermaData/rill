@@ -194,6 +194,12 @@ class SubGraph(with_metaclass(ABCMeta, Component)):
 
     @classproperty
     def inport_definitions(cls):
+        if cls.subgraph is None:
+            cls._init_graph()
+        # merge ports defined on parent classes or using @inport
+        # FIXME: we need to test the order, and possibly merge definitions.
+        # For example, description given on @inport should override the
+        # description of the exported internal port.
         exported = [(name, InputPortDefinition.from_port(port, name=name))
                     for name, port in cls.subgraph.inports.items()]
         return OrderedDict(super(SubGraph, cls).inport_definitions.items() +
@@ -201,6 +207,12 @@ class SubGraph(with_metaclass(ABCMeta, Component)):
 
     @classproperty
     def outport_definitions(cls):
+        if cls.subgraph is None:
+            cls._init_graph()
+        # merge ports defined on parent classes or using @outport
+        # FIXME: we need to test the order, and possibly merge definitions.
+        # For example, description given on @inport should override the
+        # description of the exported internal port.
         exported = [(name, OutputPortDefinition.from_port(port, name=name))
                     for name, port in cls.subgraph.outports.items()]
         return OrderedDict(super(SubGraph, cls).outport_definitions.items() +

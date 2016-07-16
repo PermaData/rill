@@ -15,7 +15,6 @@ from typing import Dict, Union, Tuple, Any, Optional
 from rill.engine.exceptions import FlowError, NetworkDeadlock
 from rill.engine.runner import ComponentRunner
 from rill.engine.component import Component, logger
-from rill.engine.port import is_null_port
 from rill.engine.status import StatusValues
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import Connection, InputPort, InputArray, InitializationConnection
@@ -30,13 +29,13 @@ class Graph(object):
         self.name = name
         self.default_capacity = default_capacity
 
-        # type: Dict[str, rill.engine.component.Component]
+        # type: OrderedDict[str, rill.engine.component.Component]
         self._components = OrderedDict()
 
         # exported inports and outports
-        # type: Dict[str, rill.engine.inputport.InputPort]
+        # type: OrderedDict[str, rill.engine.inputport.InputPort]
         self.inports = OrderedDict()
-        # type: Dict[str, rill.engine.inputport.OutputPort]
+        # type: OrderedDict[str, rill.engine.inputport.OutputPort]
         self.outports = OrderedDict()
 
     def __repr__(self):
@@ -333,6 +332,22 @@ class Graph(object):
         inport = self.get_component_port(receiver, kind='in')
         return inport.uninitialize()
 
+    def validate(self):
+        """
+        Validate the graph.
+        """
+        errors = []
+        for component in self._components.values():
+            for port in component.ports:
+                try:
+                    port.validate()
+                except FlowError as e:
+                    errors.append(str(e))
+        if errors:
+            for error in errors:
+                logger.error(error)
+            raise FlowError("Errors opening ports")
+
     # Serialization --
 
     def to_dict(self):
@@ -502,6 +517,7 @@ class Network(object):
         # FIXME: get rid of this. using gevent.iwait now
         self.cdl = None
 
+        # type: List[ComponentRunner]
         self.runners = None
         # globals is a global synchronized_map intended for real global use.
         # It is not intended for component-to-component communication.
@@ -526,10 +542,7 @@ class Network(object):
         for k in ('cdl', 'runners', 'msgs'):
             data.pop(k)
         if self.runners is not None:
-            runners = {}
-            for name, runner in self.runners.items():
-                runners[name] = runner.status
-            data['runners'] = runners
+            data['runners'] = [runner.status for runner in self.runners]
         return data
 
     def __setstate__(self, data):
@@ -537,8 +550,8 @@ class Network(object):
         self.__dict__.update(data)
         if runners is not None:
             self._build_runners()
-            for name, status in runners.items():
-                self.runners[name].status = status
+            for runner, status in zip(self.runners, runners):
+                runner.status = status
 
     def reset(self):
         # freq = 0.5 if self.deadlock_test_interval else None
@@ -619,28 +632,28 @@ class Network(object):
         """
         Populate `self.runners` with a runner for each component.
         """
-        self.runners = OrderedDict()
+        self.runners = []
         for name, comp in self.graph._components.items():
             runner = ComponentRunner(comp, self)
             comp._runner = runner
-            self.runners[name] = runner
+            self.runners.append(runner)
             runner.status = StatusValues.NOT_STARTED
 
     def _open_ports(self):
-        errors = []
-        for runner in self.runners.values():
-            errors += runner.open_ports()
-        if errors:
-            for error in errors:
-                logger.error(error)
-            raise FlowError("Errors opening ports")
+        self.graph.validate()
+        for runner in self.runners:
+            runner.open_ports()
+
+    def _close_ports(self):
+        for runner in self.runners:
+            runner.close_ports()
 
     def resume(self):
         """
         Resume a graph that has been suspended.
         """
         self_starters = []
-        for runner in self.runners.values():
+        for runner in self.runners:
             for port in runner.component.inports:
                 if port.is_connected() and not port.is_static() and \
                         port._connection._queue:
@@ -672,7 +685,7 @@ class Network(object):
         self.reset()
         self._build_runners()
         self._open_ports()
-        self_starters = [r for r in self.runners.values() if r.self_starting]
+        self_starters = [r for r in self.runners if r.self_starting]
 
         if not self_starters:
             raise FlowError("No self-starters found")
@@ -697,7 +710,7 @@ class Network(object):
         import gevent
 
         try:
-            for completed in gevent.iwait(self.runners.values()):
+            for completed in gevent.iwait(self.runners):
                 logger.debug("Component completed: {}".format(completed))
                 # if an error occurred, skip deadlock testing
                 if self.error is not None:
@@ -763,7 +776,7 @@ class Network(object):
         # in case it is not a self.deadlock
 
         terminated = True
-        for runner in self.runners.values():
+        for runner in self.runners:
             if isinstance(runner, SubGraph):
                 # consider components of subnets
                 if not runner.sub_network.list_comp_status(msgs):
@@ -804,7 +817,7 @@ class Network(object):
             # set the error field to let go() raise the exception
             self.error = e
             # terminate the network's components
-            for comp in self.runners.values():
+            for comp in self.runners:
                 comp.terminate(StatusValues.ERROR)
 
     def terminate(self, new_status=StatusValues.TERMINATED):
@@ -813,7 +826,7 @@ class Network(object):
         """
         # prevent deadlock testing, components will be shut down anyway
         self._abort = True
-        for comp in self.runners.values():
+        for comp in self.runners:
             comp.terminate(new_status)
 
     # FIXME: consider removing this and the next

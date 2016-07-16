@@ -66,6 +66,7 @@ def test_subnet_decorator():
 
     assert issubclass(DecoratedPassNet, SubGraph)
     assert DecoratedPassNet._inport_definitions[0].description == 'an input'
+    assert DecoratedPassNet.inport_definitions['IN'].description == 'an input'
 
     graph = Graph()
 
@@ -81,6 +82,9 @@ def test_subnet_decorator():
     assert dis.values == [
         '', '000005', '000004', '000003', '000002', '000001', '',
     ]
+
+
+# def test_make_subgraph():
 
 
 def test_name():

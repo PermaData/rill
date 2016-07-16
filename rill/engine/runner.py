@@ -115,18 +115,9 @@ class ComponentRunner(Greenlet):
     def open_ports(self):
         """
         Open all ports.
-
-        Returns
-        -------
-        List[Exception]
         """
-        errors = []
-        try:
-            for port in self.component.ports:
-                port.open()
-        except FlowError as e:
-            errors.append(str(e))
-        return errors
+        for port in self.component.ports:
+            port.open()
 
     def close_ports(self):
         """

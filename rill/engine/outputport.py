@@ -38,7 +38,6 @@ class OutputPort(Port, OutputInterface):
         self._is_closed = True
 
     def open(self):
-        super(OutputPort, self).open()
         self._is_closed = False
         if self.is_connected():
             self._connection._sender_count += 1
