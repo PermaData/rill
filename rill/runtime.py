@@ -638,6 +638,7 @@ class Runtime(object):
         graph.remove_outport(public)
 
 
+clients = {}
 class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
     """
     Web socket application that hosts a single ``Runtime`` instance.
@@ -672,9 +673,13 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         return 'noflo'
 
     def on_open(self):
+        self.client_id = uuid.uuid4()
+        clients[self.client_id] = self
         self.logger.info("Connection opened")
 
     def on_close(self, reason):
+        self.client_id = None
+        clients[self.client_id] = None
         self.logger.info("Connection closed. Reason: {}".format(reason))
 
     def on_message(self, message, **kwargs):
@@ -877,7 +882,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
                                              payload['tgt'],
                                              payload.get('metadata', {}))
             # send an immedate followup to set the color based on type
-            send_ack = False
+            send_ack = True
             payload['metadata'] = metadata
             self.send('graph', command, payload)
             self.send('graph', 'changeedge', payload)
@@ -947,6 +952,9 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         # acknowledgement
         if send_ack:
             self.send('graph', command, payload)
+            for client_id, client in clients.items():
+                if client_id != self.client_id:
+                    client.send('graph', command, payload)
 
     def handle_network(self, command, payload):
         """
