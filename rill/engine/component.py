@@ -300,8 +300,8 @@ class Component(with_metaclass(ABCMeta, object)):
         # FIXME: make this better.
         # - use PortCollection?
         # - don't use annotation classes to do the inheritance work (use super)
-        return OrderedDict(cls.inport_definitions.items() +
-                           cls.outport_definitions.items())
+        return OrderedDict(list(cls.inport_definitions.items()) +
+                           list(cls.outport_definitions.items()))
 
     def error(self, msg, errtype=FlowError):
         raise errtype("{}: {}".format(self, msg))

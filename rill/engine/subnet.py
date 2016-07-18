@@ -196,14 +196,14 @@ class SubGraph(with_metaclass(ABCMeta, Component)):
     def inport_definitions(cls):
         exported = [(name, InputPortDefinition.from_port(port, name=name))
                     for name, port in cls.subgraph.inports.items()]
-        return OrderedDict(super(SubGraph, cls).inport_definitions.items() +
+        return OrderedDict(list(super(SubGraph, cls).inport_definitions.items()) +
                            exported)
 
     @classproperty
     def outport_definitions(cls):
         exported = [(name, OutputPortDefinition.from_port(port, name=name))
                     for name, port in cls.subgraph.outports.items()]
-        return OrderedDict(super(SubGraph, cls).outport_definitions.items() +
+        return OrderedDict(list(super(SubGraph, cls).outport_definitions.items()) +
                            exported)
 
     @classmethod
