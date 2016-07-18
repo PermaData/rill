@@ -626,14 +626,23 @@ class Runtime(object):
             return graph.uninitialize(target_port)._content
 
     def add_export(self, graph_id, node, port, public):
+        """
+        Add inport or outport to graph
+        """
         graph = self.get_graph(graph_id)
         graph.export("{}.{}".format(node, port), public)
 
     def remove_inport(self, graph_id, public):
+        """
+        Remove inport from graph
+        """
         graph = self.get_graph(graph_id)
         graph.remove_inport(public)
 
     def remove_outport(self, graph_id, public):
+        """
+        Remove outport from graph
+        """
         graph = self.get_graph(graph_id)
         graph.remove_outport(public)
 
