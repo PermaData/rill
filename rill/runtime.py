@@ -9,6 +9,7 @@ import traceback
 import datetime
 import weakref
 from functools import wraps
+import uuid
 
 import gevent
 import geventwebsocket
@@ -919,10 +920,15 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         elif command == 'getgraph':
             send_ack = False
             graph_id = payload['id']
-            graph_messages = get_graph_messages(
-                self.runtime.get_graph(graph_id), graph_id)
-            for command, payload in graph_messages:
-                self.send('graph', command, payload)
+            try:
+                graph = self.runtime.get_graph(graph_id)
+                graph_messages = get_graph_messages(
+                    graph, graph_id)
+                for command, payload in graph_messages:
+                    self.send('graph', command, payload)
+            except RillRuntimeError as ex:
+                self.runtime.new_graph(graph_id)
+
         elif command == 'list':
             send_ack = False
             for graph_id in self.runtime._graphs.keys():
