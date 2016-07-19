@@ -687,8 +687,8 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         self.logger.info("Connection opened")
 
     def on_close(self, reason):
+        del clients[self.client_id]
         self.client_id = None
-        clients[self.client_id] = None
         self.logger.info("Connection closed. Reason: {}".format(reason))
 
     def on_message(self, message, **kwargs):
