@@ -35,13 +35,15 @@ class OutputPort(Port, OutputInterface):
 
     def __init__(self, component, name, **kwargs):
         super(OutputPort, self).__init__(component, name, **kwargs)
-        self._is_closed = True
+        self._sender_count = 0
+        # type: List[rill.engine.inputport.Connection]
+        self._connections = []
 
     def open(self):
         super(OutputPort, self).open()
-        self._is_closed = False
-        if self.is_connected():
-            self._connection._sender_count += 1
+        for connection in self._connections:
+            connection._sender_count += 1
+        self._sender_count = len(self._connections)
 
     def close(self):
         """
@@ -53,12 +55,13 @@ class OutputPort(Port, OutputInterface):
         """
         self.sender.logger.debug("Closing", port=self)
         if self.is_connected() and not self.is_closed():
-            self._is_closed = True
-            # -- synchronized (self._connection):
-            if not self._connection.is_closed():
-                # indicate that one sender has terminated
-                self._connection.indicate_sender_closed()
-                # -- end
+            self._sender_count = 0
+            # -- synchronized (self._connections):
+            for connection in self._connections:
+                if not connection.is_closed():
+                    # indicate that one sender has terminated
+                    connection.indicate_sender_closed()
+            # -- end
         self.sender.logger.debug("Close finished", port=self)
 
     def is_closed(self):
@@ -69,7 +72,10 @@ class OutputPort(Port, OutputInterface):
         -------
         bool
         """
-        return self._is_closed
+        return bool(self._sender_count)
+
+    def is_connected(self):
+        return bool(self._connections)
 
     def is_null(self):
         return self.name == OUT_NULL
@@ -125,16 +131,23 @@ class OutputPort(Port, OutputInterface):
         self.validate_packet_contents(packet.get_contents())
         self.sender.logger.debug("Sending packet: {}".format(packet),
                                  port=self)
-        if not self._connection.send(packet, self):
-            # FIXME: would be good to check if all outports are closed and
-            # terminate the component. otherwise, every component must be
-            # written to check is_closed() and break
-            self.component.drop(packet)
-            self.close()
-            # raise FlowError("{}: Could not deliver packet to {}".format(
-            #     self._connection.get_name(), self.get_name()))
-        self.sender.logger.debug("Packet sent to {}", port=self,
-                                 args=[self._connection.inport])
+
+        do_clone = len(self._connections) > 1
+        for connection in self._connections:
+            p = packet.clone() if do_clone else packet
+            if not connection.send(p, self):
+                # FIXME: would be good to check if all outports are closed and
+                # terminate the component. otherwise, every component must be
+                # written to check is_closed() and break
+                self.component.drop(p)
+                if not connection.is_closed():
+                    # indicate that one sender has terminated
+                    connection.indicate_sender_closed()
+                self._sender_count -= 1
+                # raise FlowError("{}: Could not deliver packet to {}".format(
+                #     self._connection.get_name(), self.get_name()))
+            self.sender.logger.debug("Packet sent to {}", port=self,
+                                     args=[connection.inport])
         return True
 
     def downstream_count(self):
@@ -145,10 +158,7 @@ class OutputPort(Port, OutputInterface):
         -------
         int
         """
-        if self.is_connected():
-            return self._connection.count()
-        else:
-            return 0
+        return sum([c.count() for c in self._connections])
 
 
 class OutputArray(ArrayPort, PortInterface):

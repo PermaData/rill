@@ -137,6 +137,8 @@ class InputPort(Port, InputInterface):
         super(InputPort, self).__init__(component, name, **kwargs)
         self.default = default
         self.auto_receive = static
+        # type: BaseConnection
+        self._connection = None
 
     def open(self):
         if not self.is_connected() and self.required:
