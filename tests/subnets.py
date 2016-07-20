@@ -1,6 +1,6 @@
 from rill.components.basic import Passthru
 from rill.decorators import inport, outport
-from rill.engine.subnet import SubNet, SubInSS, SubOutSS
+from rill.engine.subnet import SubGraph, SubInSS, SubOutSS
 
 
 
@@ -14,7 +14,7 @@ def submit():
 
     @inport("IN")
     @outport("OUT")
-    class MayaExport(SubNet):
+    class MayaExport(SubGraph):
         def define(self, net):
             p = Passthru("Pass")
             net.export(p.OUT, "OUT")
@@ -36,8 +36,9 @@ def submit():
 
 @outport("OUT")
 @inport("IN")
-class PassthruNet(SubNet):
-    def define(self, net):
+class PassthruNet(SubGraph):
+    @classmethod
+    def define(cls, net):
         net.add_component("Pass", Passthru)
         net.export("Pass.OUT", "OUT")
         net.export("Pass.IN", "IN")
@@ -45,7 +46,7 @@ class PassthruNet(SubNet):
 
 # @outport("OUT")
 # @inport("IN")
-# class PassthruNetSS(SubNet):
+# class PassthruNetSS(SubGraph):
 #     def define(self, net):
 #         net.add_component("SUBIN", SubInSS, NAME='IN')
 #         net.add_component("SUBOUT", SubOutSS, NAME='OUT')

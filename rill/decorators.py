@@ -53,7 +53,7 @@ def component(name_or_func=None, **kwargs):
     def decorator(func):
         name_ = name or func.__name__
         attrs = {
-            'name': name_,
+            'type_name': name_,
             '_pass_context': kwargs.get('pass_context', False),
             '_execute': staticmethod(func),
             '__doc__': getattr(func, '__doc__', None),
@@ -89,7 +89,7 @@ def subnet(name_or_func):
     Decorator for creating subnet
 
     Callback expects a function with one argument, the Network that will be
-    wrapped by the SubNet component.
+    wrapped by the SubGraph component.
 
     Parameters
     ----------
@@ -97,22 +97,22 @@ def subnet(name_or_func):
 
     Returns
     -------
-    subnet : ``rill.engine.subnet.SubNet`` class
+    subnet : ``rill.engine.subnet.SubGraph`` class
     """
-    from rill.engine.subnet import SubNet
+    from rill.engine.subnet import SubGraph
 
     def decorator(func):
-        def define(self, net):
-            func(net)
+        def define(cls, graph):
+            func(graph)
 
         name_ = name or func.__name__
         attrs = {
             'name': name_,
-            'define': define,
+            'define': classmethod(define),
             '__doc__': getattr(func, '__doc__', None),
             '__module__': func.__module__,
         }
-        cls = type(name_, (SubNet,), attrs)
+        cls = type(name_, (SubGraph,), attrs)
         # transfer annotations from func to cls
         # FIXME: not sure if all of the annotations make sense for subnets...
         for ann in ANNOTATIONS:

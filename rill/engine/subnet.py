@@ -1,53 +1,49 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
+from collections import OrderedDict
+from rill.utils import abstractclassmethod
 
 from future.utils import with_metaclass
-from past.builtins import basestring
 from typing import Type
 
 from rill.engine.component import Component, inport, outport, logger
 from rill.engine.portdef import InputPortDefinition, OutputPortDefinition
-from rill.engine.network import Network
+from rill.engine.network import Network, Graph
 from rill.engine.status import StatusValues
-from rill.engine.inputport import InputPort, InitializationConnection
-from rill.engine.outputport import OutputPort
+from rill.engine.inputport import InitializationConnection
 from rill.engine.exceptions import FlowError
 from rill.engine.packet import Packet
+from rill.utils import classproperty
 
+# using a component to proxy each exported port has a few side effects:
+# - additional logging output for the extra components
+# - additional threads which aren't necessary
+# - components in the graph which need to be ignored
+# - packets are temporarily owned by the SubGraph
+# - dynamically adding/removing inports/outports requires extra book-keeping
+#   to ensure the ExportComponents are properly created and connected
+# but it plays well with the rest of the system in a way that is
+# difficult to achieve otherwise. For example, simply exposing the
+# internal ports doesn't work because the port's component attr is not
+# the SubGraph, and so the SubGraph is never activated by OutputPort.send()
 
-@inport("NAME", type=str)
-@inport("INDEX", type=int)
+@inport("PROXIED")
 class ExportComponent(Component):
     """
     Component that exports to a parent network
     """
     hidden = True
 
-    # @property
-    # def subnet(self):
-    #     """
-    #
-    #     Returns
-    #     -------
-    #     ``rill.engine.subnet.SubNet``
-    #     """
-    #     return self.parent.parent
-
     def internal_port(self):
-        pname = self.ports.NAME.receive_once()
-        if pname is None:
-            return
-
-        port = self.subnet.ports[pname]
-        index = self.ports.INDEX.receive_once()
-        if index is not None:
-            port = port[index]
-        return port
+        """
+        Get the port on the SubGraph that this Component proxies.
+        """
+        return self.ports.PROXIED.receive_once()
 
 
 @outport("OUT")
 class SubIn(ExportComponent):
     """
-    Acts as a proxy between an input port on the SubNet and an input port on
+    Acts as a proxy between an input port on the SubGraph and an input port on
     one of its internal components.
     """
     def execute(self):
@@ -57,8 +53,8 @@ class SubIn(ExportComponent):
 
         self.logger.debug("Accessing input port: {}".format(inport))
 
+        old_receiver = inport.component
         if inport.is_static():
-            old_receiver = inport.component
             iic = InitializationConnection(inport._connection._content, inport)
 
             iic.open()
@@ -67,7 +63,6 @@ class SubIn(ExportComponent):
             self.ports.OUT.send(p)
             iic.close()
         else:
-            old_receiver = inport.component
             inport.component = self
 
             for p in inport:
@@ -124,7 +119,7 @@ class SubInSS(ExportComponent):
 @inport("IN")
 class SubOut(ExportComponent):
     """
-    Acts as a proxy between an output port on the SubNet and an output port on
+    Acts as a proxy between an output port on the SubGraph and an output port on
     one of its internal components.
     """
     def execute(self):
@@ -170,105 +165,97 @@ class SubOutSS(ExportComponent):
         self.logger.debug("Releasing output port: {}".format(outport))
 
 
-class SubNet(with_metaclass(ABCMeta, Component)):
+class SubGraph(with_metaclass(ABCMeta, Component)):
     """
-    A component that defines and executes a sub-network of components
+    A component that defines and executes a sub-graph of components
     """
-    def __init__(self, name, parent):
-        Component.__init__(self, name, parent)
-        self.sub_network = None
+    # type: rill.engine.network.Graph
+    subgraph = None
 
-    @abstractmethod
-    def define(self, net):
+    @abstractclassmethod
+    def define(cls, graph):
         """
-        Define the network that will be executed by this SubNet.
+        Define the network that will be executed by this SubGraph.
 
         Parameters
         ----------
-        net : ``rill.engine.Network``
+        graph : ``rill.engine.Graph``
             an empty network to setup
         """
         raise NotImplementedError
 
     def _init(self):
-        super(SubNet, self)._init()
-        self.sub_network = Network()
-        self.define(self.sub_network)
+        if self.subgraph is None:
+            self._init_graph()
+
         # we set these after define because we're paranoid:
-        # don't do deadlock testing in subnets - you need to consider
-        # the whole net!
-        self.sub_network.deadlock_test_interval = None
-        self.sub_network.parent = self.parent
-        self.sub_network.name = self._name
+        self.subgraph.name = self._name
+        super(SubGraph, self)._init()
 
-        # FIXME: won't setting create=True  try to recreate ports previously
-        # defined using @inport and @outport?
-        for (name, internal_port) in self.sub_network.inports.items():
-            self._export(internal_port, name, create=True)
+    @classproperty
+    def inport_definitions(cls):
+        if cls.subgraph is None:
+            cls._init_graph()
+        # merge ports defined on parent classes or using @inport
+        # FIXME: we need to test the order, and possibly merge definitions.
+        # For example, description given on @inport should override the
+        # description of the exported internal port.
+        exported = [(name, InputPortDefinition.from_port(port, name=name))
+                    for name, port in cls.subgraph.inports.items()]
+        return OrderedDict(super(SubGraph, cls).inport_definitions.items() +
+                           exported)
 
-        for (name, internal_port) in self.sub_network.outports.items():
-            self._export(internal_port, name, create=True)
+    @classproperty
+    def outport_definitions(cls):
+        if cls.subgraph is None:
+            cls._init_graph()
+        # merge ports defined on parent classes or using @outport
+        # FIXME: we need to test the order, and possibly merge definitions.
+        # For example, description given on @inport should override the
+        # description of the exported internal port.
+        exported = [(name, OutputPortDefinition.from_port(port, name=name))
+                    for name, port in cls.subgraph.outports.items()]
+        return OrderedDict(super(SubGraph, cls).outport_definitions.items() +
+                           exported)
 
-    def _export(self, internal_port, external_port_name, create=False):
+    @classmethod
+    def _init_graph(cls):
         """
-        Expose a port.
+        Initialize the graph.
 
-        Parameters
-        ----------
-        internal_port : ``rill.engine.outputport.OutputPort`` or
-                        ``rill.engine.inputport.InputPort``
-            internal port
-        external_port_name : str
-            name of external SubNet port to create
+        This is a classmethod so that exported port definitions can be
+        inspected without instantiating the SubGraph, which is a requirement
+        for all Components.
         """
-        # using a component to proxy each exported port has a few side effects:
-        # - additional logging output for the extra components
-        # - additional threads which aren't necessary
-        # - packets are temporarily owned by the SubNet
-        # but it plays well with the rest of the system in a way that is
-        # difficult to achieve otherwise. For example, simply exposing the
-        # internal ports doesn't work because the port's component attr is not
-        # the SubNet, and so the SubNet is never activated by OutputPort.send()
+        cls.subgraph = Graph()
+        cls.define(cls.subgraph)
+        assert cls.subgraph is not None
 
-        # FIXME: support exporting an array port to array port. currently,
-        # if you try to do that you'll end up exporting the first element
-        if create:
-            # create a new port on the SubNet based on the exported port
-            def_cls = InputPortDefinition if internal_port.kind == 'in' \
-                else OutputPortDefinition
-            assert isinstance(external_port_name, basestring)
-            portdef = def_cls.from_port(internal_port)
-            portdef.name = external_port_name
-            external_port = portdef.create_port(self)
-            self.ports[external_port_name] = external_port
-        else:
-            external_port = self.port(external_port_name,
-                                      kind=internal_port.kind)
+    def _build_network(self):
+        # the graph is a class attribute, so we have to make a deep copy to
+        # avoid side-effects
+        graph = self.subgraph.copy()
+        for (name, internal_port) in graph.inports.items():
+            subcomp = graph.add_component('_' + name, SubIn,
+                                          PROXIED=self.ports[name])
+            graph.connect(subcomp.ports.OUT, internal_port)
 
-        if external_port.is_array():
-            external_port = external_port.get_element(create=True)
+        for (name, internal_port) in graph.outports.items():
+            subcomp = graph.add_component('_' + name, SubOut,
+                                          PROXIED=self.ports[name])
+            graph.connect(internal_port, subcomp.ports.IN)
 
-        if isinstance(external_port, InputPort):
-            subcomp = self.sub_network.add_component(
-                '_' + external_port.name, SubIn, NAME=external_port._name)
-            if external_port.index is not None:
-                self.initialize(external_port.index, subcomp.ports.INDEX)
-            self.sub_network.connect(subcomp.ports.OUT, internal_port)
-        elif isinstance(external_port, OutputPort):
-            subcomp = self.sub_network.add_component(
-                '_' + external_port.name, SubOut, NAME=external_port._name)
-            if external_port.index is not None:
-                self.initialize(external_port.index, subcomp.ports.INDEX)
-            self.sub_network.connect(internal_port, subcomp.ports.IN)
-        else:
-            raise TypeError()
-        # FIXME: this is ugly, but will have to do until we revisit the overall
-        # structure of subnets
-        subcomp.subnet = self
+        # don't do deadlock testing in sub graphs - you need to consider
+        # the whole graph!
+        network = Network(graph, deadlock_test_interval=None)
+        # set the network parent. this allows runners within the network to
+        # walk up the network parents to the root
+        network.parent_network = self._runner.parent_network
+        return network
 
     def execute(self):
         # self.get_components().clear()
-        # FIXME:
+        # FIXME: are these supposed to be the same as null ports?
         sub_end_port = None  # self.outports.get("*SUBEND")
         sub_in_port = None  # self.inports.get("*CONTROL")
         if sub_in_port is not None:
@@ -280,11 +267,6 @@ class SubNet(with_metaclass(ABCMeta, Component)):
         # tracing = parent.tracing
         # trace_file_list = parent.trace_file_list
 
-        # FIXME: run define() as part of init. if we allow dynamic port
-        # creation in define(), which would be great, then it needs to be run
-        # during the net creation phase to know what the ports are. or provide
-        # variable to control when it gets run...
-        # self.define()
         # FIXME: warn if any external ports have not been connected
 
         # if not all(c._check_required_ports() for c in
@@ -293,9 +275,11 @@ class SubNet(with_metaclass(ABCMeta, Component)):
         #         "One or more mandatory connections have been left unconnected: " + self.get_name())
 
         # FIXME: handle resume!
-        self.sub_network.initiate()
+
+        network = self._build_network()
+        network.initiate()
         # activate_all()
-        self.sub_network.wait_for_all()
+        network.wait_for_all()
         for inp in self.inports:
             if inp.is_static() and not inp.is_null():
                 inp.close()
@@ -310,89 +294,88 @@ class SubNet(with_metaclass(ABCMeta, Component)):
             sub_end_port.send(Packet(None, self))
 
     def get_children(self):
-        return list(self.sub_network.get_components().values())
+        return list(self.subgraph.get_components().values())
 
-    def signal_error(self, e):
-        if self.status != StatusValues.ERROR:
-            self.parent.signal_error(e)
-            self.terminate(StatusValues.ERROR)
+    # def signal_error(self, e):
+    #     if self.status != StatusValues.ERROR:
+    #         self.parent.signal_error(e)
+    #         self.terminate(StatusValues.ERROR)
 
 
-@inport("NAME")
-@inport("IN")
-@outport("OUT")
-class SubOI(Component):
-    """Look after (synchronous) output/input from/to subnet.
+# @inport("NAME")
+# @inport("IN")
+# @outport("OUT")
+# class SubOI(Component):
+#     """Look after (synchronous) output/input from/to subnet.
+#
+#     This component sends a single packet out to the (external) output port,
+#     and then immediately does a receive from the corresponding (external) input
+#     port. This process repeats until a None is received on the input port.
+#     """
+#
+#     def execute(self):
+#         np = self.nameport.receive()
+#         if np is None:
+#             return
+#         self.nameport.close()
+#         pname = np.get_contents()
+#         self.drop(np)
+#
+#         i = pname.index_of(":")
+#         oname = pname.substring(0, i)
+#         iname = pname.substring(i + 1)
+#         extoutport = self.parent.get_outports().get(oname)
+#         self.parent.trace_funcs(
+#             self.get_name() + ": Accessing output port: " + extoutport.get_name())
+#
+#         old_sender = extoutport.get_sender()
+#         extoutport.set_sender(self)
+#
+#         extinport = self.parent.get_inports().get(iname)
+#         self.parent.trace_funcs(
+#             self.get_name() + ": Accessing input port: " + extinport.get_name())
+#         old_receiver = extinport.get_receiver()
+#         extinport.set_receiver(self)
+#
+#         for p in self.inport.receive():
+#             self.extoutport.send(p)
+#
+#             p = extinport.receive()
+#             p.set_owner(self)
+#             self.outport.send(p)
+#
+#         self.parent.trace_funcs(
+#             self.get_name() + ": Releasing input port: " + extinport.get_name())
+#         extinport.set_receiver(old_receiver)
+#
+#         self.parent.trace_funcs(
+#             self.get_name() + ": Releasing output port: " + extoutport.get_name())
+#         extoutport.set_sender(old_sender)
+#
+#     def open_ports(self):
+#         self.nameport = self.open_input("NAME")
+#         self.inport = self.open_input("IN")
+#         self.outport = self.open_output("OUT")
 
-    This component sends a single packet out to the (external) output port,
-    and then immediately does a receive from the corresponding (external) input
-    port. This process repeats until a None is received on the input port.
+
+def make_subgraph(name, graph):
     """
-
-    def execute(self):
-        np = self.nameport.receive()
-        if np is None:
-            return
-        self.nameport.close()
-        pname = np.get_contents()
-        self.drop(np)
-
-        i = pname.index_of(":")
-        oname = pname.substring(0, i)
-        iname = pname.substring(i + 1)
-        extoutport = self.parent.get_outports().get(oname)
-        self.parent.trace_funcs(
-            self.get_name() + ": Accessing output port: " + extoutport.get_name())
-
-        old_sender = extoutport.get_sender()
-        extoutport.set_sender(self)
-
-        extinport = self.parent.get_inports().get(iname)
-        self.parent.trace_funcs(
-            self.get_name() + ": Accessing input port: " + extinport.get_name())
-        old_receiver = extinport.get_receiver()
-        extinport.set_receiver(self)
-
-        for p in self.inport.receive():
-            self.extoutport.send(p)
-
-            p = extinport.receive()
-            p.set_owner(self)
-            self.outport.send(p)
-
-        self.parent.trace_funcs(
-            self.get_name() + ": Releasing input port: " + extinport.get_name())
-        extinport.set_receiver(old_receiver)
-
-        self.parent.trace_funcs(
-            self.get_name() + ": Releasing output port: " + extoutport.get_name())
-        extoutport.set_sender(old_sender)
-
-    def open_ports(self):
-        self.nameport = self.open_input("NAME")
-        self.inport = self.open_input("IN")
-        self.outport = self.open_output("OUT")
-
-
-def make_subnet(name, net):
-    """
-    Make a ``SubNet`` class from a ``Network`` instance.
+    Make a ``SubGraph`` component class from a ``Graph`` instance.
 
     Parameters
     ----------
     name : str
-    net : ``rill.engine.network.Network``
+    graph : ``rill.engine.network.Graph``
 
     Returns
     -------
-    Type[``SubNet``]
+    Type[``SubGraph``]
     """
-    def define(self, _):
-        self.sub_network = net
+    def define(cls, _):
+        cls.subgraph = graph
 
     attrs = {
         'name': name,
-        'define': define,
-        'sub_network': net
+        'define': classmethod(define)
     }
-    return type(name, (SubNet,), attrs)
+    return type(name, (SubGraph,), attrs)

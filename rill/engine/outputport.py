@@ -40,7 +40,6 @@ class OutputPort(Port, OutputInterface):
         self._connections = []
 
     def open(self):
-        super(OutputPort, self).open()
         for connection in self._connections:
             connection._sender_count += 1
         self._sender_count = len(self._connections)

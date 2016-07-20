@@ -1,4 +1,4 @@
-import collections
+from collections import OrderedDict, deque
 import logging
 import re
 from abc import ABCMeta, abstractmethod
@@ -36,21 +36,27 @@ class Component(with_metaclass(ABCMeta, object)):
     # same as module-level logger, but provided here for convenience
     logger = logger
 
-    def __init__(self, name, parent):
+    def __init__(self, name):
+        """
+
+        Parameters
+        ----------
+        name : str
+        """
         assert name is not None
         self._name = name
 
-        # the component's immediate network parent: used for subnet support
-        self.parent = parent
         # set by the network
+        # type: rill.engine.runner.ComponentRunner
         self._runner = None
 
         # All the input ports are stored here, keyed by name.
+        # type: PortCollection
         self.ports = None
         self.metadata = {}
 
         # a stack available to each component
-        self._stack = collections.deque()
+        self._stack = deque()
 
         # count of packets owned by this component.
         # Whenever the component deactivates, the count must be zero.
@@ -64,8 +70,7 @@ class Component(with_metaclass(ABCMeta, object)):
 
     def __getstate__(self):
         data = self.__dict__.copy()
-        for k in ('_runner',):
-            data.pop(k)
+        data['_runner'] = None
         return data
 
     def __setstate__(self, data):
@@ -78,7 +83,7 @@ class Component(with_metaclass(ABCMeta, object)):
         Initialize internal attributes.
         """
         self.ports = PortCollection(
-            self, [p.create_port(self) for p in self.port_definitions()])
+            self, [p.create_port(self) for p in self.port_definitions().values()])
 
     # FIXME: rename to root_network
     @property
@@ -90,24 +95,17 @@ class Component(with_metaclass(ABCMeta, object)):
         -------
         ``rill.engine.network.Network``
         """
-        return self.get_parents()[0]
+        return self._runner.network
 
-    @cache
     def get_parents(self):
         """
         Returns
         -------
-        List[``rill.engine.network.Network``]
+        List[``rill.engine.network.Graph``]
         """
-        parent = self.parent
-        parents = []
-        while True:
-            if parent is None:
-                break
-            parents.append(parent)
-            parent = parent.parent
-        parents.reverse()
-        return parents
+        if self._runner is None:
+            return []
+        return [p.graph for p in self._runner.get_parents()]
 
     def get_children(self):
         """
@@ -117,7 +115,7 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         return []
 
-    # FIXME: property
+    # FIXME: remove this in favor of name property
     def get_name(self):
         """
         Name of the component.
@@ -128,7 +126,21 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         return self._name
 
-    @cache
+    @property
+    def name(self):
+        """
+        Name of the component.
+
+        Returns
+        -------
+        str
+        """
+        return self._name
+
+    # FIXME: we can't cache this because get_parents() may be empty the first
+    # time it is called if there is no runner yet.  Look into a way to return
+    # a non-cached result.
+    # @cache
     def get_full_name(self):
         """
         Name of the component, including all parent components.
@@ -162,13 +174,13 @@ class Component(with_metaclass(ABCMeta, object)):
         dict
         """
         import textwrap
-        from rill.engine.subnet import SubNet
+        from rill.engine.subnet import SubGraph
 
         return {
             'name': cls.get_type(),
             'description': textwrap.dedent(cls.__doc__ or '').strip(),
             #'icon': '',
-            'subgraph': issubclass(cls, SubNet),
+            'subgraph': issubclass(cls, SubGraph),
             'inPorts': [
                 indef.get_spec()
                 for indef in cls.inport_definitions
@@ -267,18 +279,29 @@ class Component(with_metaclass(ABCMeta, object)):
 
     @classproperty
     def inport_definitions(cls):
-        return inport.get_inherited(cls)
+        """
+        Returns
+        -------
+        OrderedDict
+        """
+        return OrderedDict((p.name, p) for p in inport.get_inherited(cls))
 
     @classproperty
     def outport_definitions(cls):
-        return outport.get_inherited(cls)
+        """
+        Returns
+        -------
+        OrderedDict
+        """
+        return OrderedDict((p.name, p) for p in outport.get_inherited(cls))
 
     @classmethod
     def port_definitions(cls):
         # FIXME: make this better.
-        # - use OrderedDict
+        # - use PortCollection?
         # - don't use annotation classes to do the inheritance work (use super)
-        return cls.inport_definitions + cls.outport_definitions
+        return OrderedDict(cls.inport_definitions.items() +
+                           cls.outport_definitions.items())
 
     def error(self, msg, errtype=FlowError):
         raise errtype("{}: {}".format(self, msg))

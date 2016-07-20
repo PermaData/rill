@@ -3,13 +3,13 @@ import pytest
 import rill.engine.utils
 rill.engine.utils.patch()
 
-from rill.engine.network import Network, apply_network
+from rill.engine.network import Network, Graph, run_graph
 from rill.engine.runner import ComponentRunner
 from rill.components.basic import Capture
 from rill.components.timing import SlowPass
 from tests.components import *
 from tests.subnets import PassthruNet
-from tests.test_components import net, discard
+from tests.test_components import graph, discard
 
 import logging
 ComponentRunner.logger.setLevel(logging.DEBUG)
@@ -22,18 +22,18 @@ requires_patch = pytest.mark.skipif(not is_patched,
 
 
 @requires_patch
-def test_subnet_with_substreams(net, discard):
+def test_subnet_with_substreams(graph, discard):
     # tracing = True
-    gen = net.add_component("Generate", GenSS, COUNT=15)
-    passnet = net.add_component("Subnet", PassthruNet)
-    dis = net.add_component("Discard", discard)
+    gen = graph.add_component("Generate", GenSS, COUNT=15)
+    passnet = graph.add_component("Subnet", PassthruNet)
+    dis = graph.add_component("Discard", discard)
 
-    net.connect("Generate.OUT", "Subnet.IN")
-    net.connect("Subnet.OUT", "Discard.IN")
+    graph.connect("Generate.OUT", "Subnet.IN")
+    graph.connect("Subnet.OUT", "Discard.IN")
 
-    # net.reset()
-    # net._build_runners()
-    # net._open_ports()
+    # graph.reset()
+    # graph._build_runners()
+    # graph._open_ports()
     # assert isinstance(passnet.ports['OUT'].component, Passthru)
     # assert isinstance(passnet.ports['OUT'].sender, ComponentRunner)
     # assert isinstance(passnet.ports['IN'].component, Passthru)
@@ -41,8 +41,8 @@ def test_subnet_with_substreams(net, discard):
 
 
     # FIXME: need a separate test for the NULL port behavior
-    # net.connect("Subnet.*SUBEND", "WTC.IN")
-    net.go()
+    # graph.connect("Subnet.*SUBEND", "WTC.IN")
+    run_graph(graph)
 
     assert dis.values == [
         '', '000015', '000014', '000013', '000012', '000011', '',
@@ -64,30 +64,69 @@ def test_subnet_decorator():
         sub.export('Head.IN', 'IN')
         sub.export('Tail.OUT', 'OUT')
 
-    assert issubclass(DecoratedPassNet, SubNet)
+    assert issubclass(DecoratedPassNet, SubGraph)
     assert DecoratedPassNet._inport_definitions[0].description == 'an input'
+    assert DecoratedPassNet.inport_definitions['IN'].description == 'an input'
 
-    net = Network()
+    graph = Graph()
 
-    gen = net.add_component("Generate", GenSS, COUNT=5)
-    passnet = net.add_component("Subnet", DecoratedPassNet)
-    dis = net.add_component("Discard", Discard)
+    gen = graph.add_component("Generate", GenSS, COUNT=5)
+    passnet = graph.add_component("Subnet", DecoratedPassNet)
+    dis = graph.add_component("Discard", Discard)
 
-    net.connect("Generate.OUT", "Subnet.IN")
-    net.connect("Subnet.OUT", "Discard.IN")
+    graph.connect("Generate.OUT", "Subnet.IN")
+    graph.connect("Subnet.OUT", "Discard.IN")
 
-    net.go()
+    run_graph(graph)
 
     assert dis.values == [
         '', '000005', '000004', '000003', '000002', '000001', '',
     ]
 
 
+# def test_make_subgraph():
+
+
 def test_name():
-    net = Network()
-    passnet = net.add_component("Subnet", PassthruNet)
-    child = passnet.sub_network.component("Pass")
-    assert child.get_full_name() == 'Subnet.Pass'
+    root = Graph(name='root')
+    passnet = root.add_component("Subnet", PassthruNet)
+    child = passnet.subgraph.component("Pass")
+
+    assert passnet._runner is None
+    assert passnet.get_parents() == []
+    assert passnet.get_full_name() == 'Subnet'
+
+    assert child._runner is None
+    assert child.get_parents() == []
+    assert child.get_full_name() == 'Pass'
+
+    # a component's full name is not available until all of the graphs' and
+    # sub-graphs' runners have been initialized.
+    # this is the result of two conflicting requirements:
+    #  - graphs should not be modified during execution.  in other words,
+    #    there should be no side-effects.  this means that a graph cannot have
+    #    a parent graph attribute, we must track that relationship elsewhere.
+    #  - delay building runners until absolutely necessary.  this means that
+    #    a component, which *can* have a parent, is not available until the
+    #    graph is executed.
+    # we might want to revisit this if it becomes a nuisance.
+    net = Network(root)
+    net._build_runners()
+    assert passnet._runner is not None
+    assert passnet.get_parents() == [root]
+
+    # building the network does a deep copy of the graph and its components
+    snet = passnet._build_network()
+    assert snet.graph is not passnet.subgraph
+    assert child is passnet.subgraph.component('Pass')
+    child_copy = snet.graph.component('Pass')
+    assert child is not child_copy
+    assert type(child) is type(child_copy)
+
+    snet._build_runners()
+    assert child_copy._runner is not None
+    assert snet.parent_network is not None
+    assert child_copy.get_full_name() == 'root.Subnet.Pass'
 
 
 def test_initialize_subnet():
@@ -103,14 +142,14 @@ def test_initialize_subnet():
         sub.export('Head.IN', 'IN')
         sub.export('Tail.OUT', 'OUT')
 
-    net = Network()
-    capture = net.add_component('Capture', Capture)
+    graph = Graph()
+    capture = graph.add_component('Capture', Capture)
 
-    net.add_component('Pass', PassNet)
-    net.initialize(5, 'Pass.IN')
-    net.connect('Pass.OUT', 'Capture.IN')
+    graph.add_component('Pass', PassNet)
+    graph.initialize(5, 'Pass.IN')
+    graph.connect('Pass.OUT', 'Capture.IN')
 
-    net.go()
+    run_graph(graph)
 
     assert capture.value == 5
 

@@ -27,7 +27,7 @@ def main():
         '--log-file', metavar='FILE_PATH',
         help='File to send log output to (default: none)')
     argp.add_argument(
-        '-m', '--module', dest='modules', action='append',
+        '-m', '--module', dest='modules', action='append', default=[],
         help='Module to load')
     argp.add_argument(
         '-v', '--verbose', action='store_true',

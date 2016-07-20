@@ -132,6 +132,13 @@ class BasePort(with_metaclass(ABCMeta, object)):
         return self.index is not None
 
     @abstractmethod
+    def validate(self):
+        """
+        Runs prior to opening a port to validate that the port can be opened.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def open(self):
         """
         Open the port.
@@ -183,7 +190,10 @@ class Port(BasePort):
                 return conformed if conformed is not None else packet_content
         return packet_content
 
-    def open(self):
+    def validate(self):
+        """
+        Runs prior to opening a port to validate that the port can be opened.
+        """
         if not self.is_connected() and self.required:
             raise FlowError(
                 "{} port is required, but not connected".format(self))
@@ -227,8 +237,6 @@ class PortContainerMixin(with_metaclass(ABCMeta, object)):
     def iter_ports(self):
         """
         Iterate over all ports held by this container.
-
-        This excludes ``ArrayPort``s but includes their members.
 
         Returns
         -------
@@ -382,12 +390,7 @@ class ArrayPort(BasePort, PortContainerMixin):
         self._elements[index] = comp
         return comp
 
-    def open(self):
-        """
-        Open the element ports within the array.
-
-        Prepares ports to receive data.
-        """
+    def validate(self):
         self._check_port_types()
 
         if not self.ports() and self.required:
@@ -405,6 +408,12 @@ class ArrayPort(BasePort, PortContainerMixin):
                     "Required {} {} has missing elements: {}".format(
                         self.port_class.__name__, self, ', '.join(missing)))
 
+    def open(self):
+        """
+        Open the element ports within the array.
+
+        Prepares ports to receive data.
+        """
         for port in self.ports():
             port.open()
 
@@ -438,7 +447,7 @@ class BasePortCollection(PortContainerMixin):
 
     def iter_ports(self):
         """
-        Iterate over all ports and their children.
+        Iterate over all ports in the container.
 
         Returns
         -------
@@ -487,8 +496,8 @@ class PortCollection(BasePortCollection):
         names = [p.name for p in ports]
         dupes = [n for n, count in Counter(names).items() if count > 1]
         if dupes:
-            self.component.error(
-                "Duplicate port names: {}".format(', '.join(dupes)))
+            raise FlowError("{}: Duplicate port names: {}".format(
+                self.component, ', '.join(dupes)))
         return ports
 
     def __iter__(self):

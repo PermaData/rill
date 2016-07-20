@@ -4,6 +4,18 @@ import inspect
 from kids.cache import cache
 
 
+try:
+    from abc import abstractclassmethod
+except ImportError:
+    class abstractclassmethod(classmethod):
+
+        __isabstractmethod__ = True
+
+        def __init__(self, callable):
+            callable.__isabstractmethod__ = True
+            super(abstractclassmethod, self).__init__(callable)
+
+
 class classproperty(object):
     """
     Class for creating properties for un-initialized classes. Works like a
@@ -49,6 +61,9 @@ class Annotation(object):
         Whether the annotation can be repeated to create a list of values
     default : object
         default value if the annotation is not present
+    attribute : str
+        name of attribute on the decorated object on which to store the
+        annotated value.
     """
     # sub-classes provide:
     multi = False

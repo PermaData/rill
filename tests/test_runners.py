@@ -8,7 +8,8 @@ def test_self_starting():
     they have only unconnected or static ports.
     """
     comp = Mock(_self_starting=True)
-    runner = ComponentRunner(comp)
+    network = Mock()
+    runner = ComponentRunner(comp, network)
     assert runner.self_starting is True
     runner.has_run = True
     assert runner.self_starting is False
@@ -29,7 +30,7 @@ def test_self_starting():
                     Mock(**static_port),
                     Mock(**unconnected_port)
                 ])
-    runner = ComponentRunner(comp)
+    runner = ComponentRunner(comp, network)
     assert runner.self_starting is True
     runner.has_run = True
     assert runner.self_starting is False
@@ -39,7 +40,7 @@ def test_self_starting():
                     Mock(**static_port),
                     Mock(**connected_port)
                 ])
-    runner = ComponentRunner(comp)
+    runner = ComponentRunner(comp, network)
     assert runner.self_starting is False
     runner.has_run = True
     assert runner.self_starting is False

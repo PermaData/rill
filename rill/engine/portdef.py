@@ -26,6 +26,9 @@ class PortDefinition(object):
         self.description = description
         self.fixed_size = fixed_size
 
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, repr(self.name))
+
     @property
     def data(self):
         """
@@ -42,14 +45,19 @@ class PortDefinition(object):
         return data
 
     def get_port_type(self):
-        '''
+        """
         Get the class used by this port.
 
         Returns
         -------
         Type[``rill.engine.port.BasePort``]
-        '''
+        """
         raise NotImplementedError
+
+    @classmethod
+    def from_port(cls, port):
+        klass = InputPortDefinition if port.kind == 'in' else OutputPortDefinition
+        return klass.from_port(port)
 
     def create_port(self, component):
         """
@@ -106,7 +114,7 @@ class InputPortDefinition(PortDefinition):
         return InputArray if self.array else InputPort
 
     @classmethod
-    def from_port(cls, port):
+    def from_port(cls, port, **overrides):
         """
         Create a port definition from a port.
 
@@ -118,11 +126,14 @@ class InputPortDefinition(PortDefinition):
         -------
         ``InputPortDefinition``
         """
-        return cls(port._name, type=port.type.type_def, array=port.is_array(),
-                   fixed_size=port.fixed_size if port.is_array() else None,
-                   description=port.description,
-                   required=port.required, static=port.auto_receive,
-                   default=port.default)
+        kwargs = dict(name=port._name, type=port.type.type_def,
+                      array=port.is_array(),
+                      fixed_size=port.fixed_size if port.is_array() else None,
+                      description=port.description,
+                      required=port.required, static=port.auto_receive,
+                      default=port.default)
+        kwargs.update(overrides)
+        return cls(**kwargs)
 
     def get_spec(self):
         spec = super(InputPortDefinition, self).get_spec()
@@ -142,7 +153,7 @@ class OutputPortDefinition(PortDefinition):
         return OutputArray if self.array else OutputPort
 
     @classmethod
-    def from_port(cls, port):
+    def from_port(cls, port, **overrides):
         """
         Create a port definition from a port.
 
@@ -154,10 +165,13 @@ class OutputPortDefinition(PortDefinition):
         -------
         ``OutputPortDefinition``
         """
-        return cls(port._name, type=port.type.type_def, array=port.is_array(),
-                   fixed_size=port.fixed_size if port.is_array() else None,
-                   description=port.description,
-                   required=port.required)
+        kwargs = dict(name=port._name, type=port.type.type_def,
+                      array=port.is_array(),
+                      fixed_size=port.fixed_size if port.is_array() else None,
+                      description=port.description,
+                      required=port.required)
+        kwargs.update(overrides)
+        return cls(**kwargs)
 
     def get_spec(self):
         spec = super(OutputPortDefinition, self).get_spec()

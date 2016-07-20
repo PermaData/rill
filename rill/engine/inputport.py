@@ -141,15 +141,10 @@ class InputPort(Port, InputInterface):
         self._connection = None
 
     def open(self):
-        if not self.is_connected() and self.required:
-            raise FlowError(
-                "{} port is required, but not connected".format(self))
-
         if not self.is_connected() and self.default is not NOT_SET:
             self.initialize(self.default)
         if self.is_connected():
             self._connection.open()
-        super(InputPort, self).open()
 
     def close(self):
         if self.is_connected():

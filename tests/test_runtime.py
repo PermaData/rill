@@ -1,11 +1,29 @@
 from rill.engine.runner import ComponentRunner
 from rill.runtime import Runtime, get_graph_messages
-from rill.engine.network import Network
+from rill.engine.network import Graph
 
 from tests.components import *
 
 import logging
 ComponentRunner.logger.setLevel(logging.DEBUG)
+
+
+def get_graph(graph_name):
+    graph = Graph(name=graph_name)
+
+    gen = graph.add_component('Generate', GenerateTestData)
+    gen.metadata['x'] = 5
+    gen.metadata['y'] = 5
+
+    passthru = graph.add_component('Pass', Passthru)
+    outside = graph.add_component('Outside', Passthru)
+
+    graph.connect('Generate.OUT', 'Pass.IN')
+    graph.connect('Outside.OUT', 'Pass.IN')
+    graph.initialize(5, 'Generate.COUNT')
+    graph.export('Pass.OUT', 'OUTPORT')
+    graph.export('Outside.IN', 'INPORT')
+    return graph, gen, passthru, outside
 
 
 # FIXME: create a fixture for the network in test_network_serialization and use that here
@@ -18,23 +36,12 @@ def test_get_graph_messages():
     runtime = Runtime()
     runtime.new_graph(graph_id)
 
-    net = Network(name=graph_name)
-    runtime.add_graph(graph_id, net)
-
-    gen = net.add_component('Generate', GenerateTestData)
-    gen.metadata['x'] = 5
-    gen.metadata['y'] = 5
-
-    passthru = net.add_component('Pass', Passthru)
-    outside = net.add_component('Outside', Passthru)
-
-    net.connect('Generate.OUT', 'Pass.IN')
-    net.connect('Outside.OUT', 'Pass.IN')
-    net.initialize(5, 'Generate.COUNT')
-    net.export('Pass.OUT', 'OUTPORT')
-    net.export('Outside.IN', 'INPORT')
+    graph, gen, passthru, outside = get_graph(graph_name)
+    runtime.add_graph(graph_id, graph)
 
     messages = list(get_graph_messages(runtime.get_graph(graph_id), graph_id))
+
+    # FIXME: paste in an exact copy of the document here
     assert ('clear', {
         'id': graph_id,
         'name': graph_name
@@ -84,7 +91,9 @@ def test_get_graph_messages():
 
     assert ('addinitial', {
         'graph': graph_id,
-        'data': 5,
+        'src': {
+            'data': 5,
+        },
         'tgt': {
             'node': gen.get_name(),
             'port': 'COUNT'
