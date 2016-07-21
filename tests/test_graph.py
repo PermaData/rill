@@ -443,7 +443,7 @@ def test_required_array_error():
 
     gen.init()
     with pytest.raises(FlowError):
-        gen.ports.OUT.open()
+        gen.ports.OUT.validate()
 
 
 def test_add_component():
@@ -470,4 +470,4 @@ def test_optional_fixed_size_array_error():
     assert gen.ports['OUT'].required is True
     gen.init()
     with pytest.raises(FlowError):
-        gen.ports.OUT.open()
+        gen.ports.OUT.validate()

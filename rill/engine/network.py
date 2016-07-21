@@ -91,7 +91,7 @@ class Graph(object):
 
     # Components --
 
-    def add_component(self, name, comp_type, **initializations):
+    def add_component(self, *args, **initializations):
         """
         Instantiate a component and add it to the network.
 
@@ -106,13 +106,34 @@ class Graph(object):
         -------
         ``rill.engine.component.Component``
         """
+        if len(args) == 1:
+            arg = args[0]
+            if issubclass(arg, Component):
+                comp = arg
+                name = comp.name
+            elif isclass(arg) and issubclass(arg, Component):
+                comp_type = arg
+                name = comp_type.type_name or comp_type.__name__
+                basename = name
+                i = 0
+                while name in self._components:
+                    i += 1
+                    name = basename + str(i)
+                comp = comp_type(name)
+            else:
+                raise ValueError()
+        elif len(args) == 2:
+            name, comp_type = args
+            if not isclass(comp_type) or not issubclass(comp_type, Component):
+                raise TypeError("comp_type must be a sub-class of Component")
+            comp = comp_type(name)
+        else:
+            raise ValueError()
+
         if name in self._components:
             raise FlowError(
                 "Component {} already exists in network".format(name))
-        if not isclass(comp_type) or not issubclass(comp_type, Component):
-            raise TypeError("comp_type must be a sub-class of Component")
 
-        comp = comp_type(name)
         self.put_component(name, comp)
 
         for name, value in initializations.items():
@@ -121,6 +142,25 @@ class Graph(object):
                 continue
             self.initialize(value, receiver)
         return comp
+
+    def add_graph(self, name, graph, **initializations):
+        """
+        Instantiate a component and add it to the network.
+
+        Parameters
+        ----------
+        name : str
+            name of component within the graph
+        graph : ``Graph``
+            graph to add
+
+        Returns
+        -------
+        ``rill.engine.component.Component``
+        """
+        from rill.engine.subnet import make_subgraph
+        comp_type = make_subgraph(name, graph)
+        return self.add_component(name, comp_type, **initializations)
 
     def remove_component(self, name):
         # FIXME: this needs some love
@@ -352,12 +392,12 @@ class Graph(object):
 
     def to_dict(self):
         """
-        Serialize network to dictionary
+        Serialize graph to dictionary
 
         Returns
         -------
         definition : dict
-            json-serializable representation of network according to fbp json
+            json-serializable representation of graph according to fbp json
             standard
         """
         def portdef(cname, p):
@@ -444,15 +484,15 @@ class Graph(object):
 
         Returns
         -------
-        ``rill.enginge.network.Network``
+        ``rill.enginge.network.Graph``
         """
         import pydoc
 
         def _port(p):
-            return net.get_component_port((p['process'], p['port']),
-                                          index=p.get('index', None))
+            return graph.get_component_port((p['process'], p['port']),
+                                            index=p.get('index', None))
 
-        net = cls()
+        graph = cls()
         for (name, spec) in definition['processes'].items():
             if component_lookup:
                 comp_class = component_lookup[spec['component']]
@@ -461,7 +501,7 @@ class Graph(object):
                 if comp_class is None:
                     raise FlowError("Could not find component {}".format(
                         spec['component']))
-            component = net.add_component(name, comp_class)
+            component = graph.add_component(name, comp_class)
             if spec.get('metadata'):
                 component.metadata.update(spec['metadata'])
 
@@ -471,19 +511,19 @@ class Graph(object):
                 # static initializer
                 content = connection['src']['data']
                 content = tgt.type.to_native(content)
-                net.initialize(content, tgt)
+                graph.initialize(content, tgt)
             else:
                 # connection
                 src = _port(connection['src'])
-                net.connect(src, tgt)
+                graph.connect(src, tgt)
 
         for (name, inport) in definition['inports'].items():
-            net.export(_port(inport), name)
+            graph.export(_port(inport), name)
 
         for (name, outport) in definition['outports'].items():
-            net.export(_port(outport), name)
+            graph.export(_port(outport), name)
 
-        return net
+        return graph
 
 
 class Network(object):
@@ -633,7 +673,7 @@ class Network(object):
         Populate `self.runners` with a runner for each component.
         """
         self.runners = []
-        for name, comp in self.graph._components.items():
+        for comp in self.graph._components.values():
             runner = ComponentRunner(comp, self)
             comp._runner = runner
             self.runners.append(runner)
@@ -855,51 +895,58 @@ class Network(object):
         self._packet_counts[connection] += 1
 
 
-def run_graph(graph):
-    Network(graph).go()
-
-
-def apply_graph(graph, inputs, outports=None):
+def run_graph(graph, initializations=None, capture_results=False):
     """
-    Apply network like a function treating iips as arguments to inports
-    and returning the values of outports
+    Run a graph.
 
     Parameters
     ----------
     graph : ``rill.engine.network.Graph``
-    inputs : Dict[str, Any]
-        map of inport names to initial content
-    outports : Optional[List[str]]
-        list of outports whose results should be collected
+    initializations : Optional[Dict[str, Any]]
+        map of exported inport names to initial content
+    capture_results : Union[bool, List[str]]
+        list of exported outport names whose results should be collected.
+        True for all, False for none.
 
     Returns
     -------
     Dict[str, Any]
         map network outport names to captured values
     """
-    from rill.engine.subnet import make_subgraph
     from rill.components.basic import Capture
 
-    if outports is None:
-        # FIXME: I believe this should default to *unconnected* output ports
+    if capture_results is True:
         outports = graph.outports.keys()
+        if not outports:
+            raise FlowError("Cannot capture results: graph has no exported "
+                            "outports")
+    elif capture_results is False:
+        outports = []
+    else:
+        outports = capture_results
 
-    # use a wrapper so we don't modify the passed graph
-    wrapper = Graph()
-    apply = wrapper.add_component('Apply', make_subgraph('Apply', graph))
+    initializations = initializations or {}
 
-    for (port_name, content) in inputs.items():
-        wrapper.initialize(content, apply.port(port_name))
+    if outports or initializations:
+        # use a wrapper so we don't modify the passed graph
+        # we could also copy the graph, but seeing as we're working with
+        # inports and outports, it might be best to operate on the graph as a
+        # SubGraph to ensure consistent behavior
+        wrapper = Graph()
+        apply = wrapper.add_graph('Apply', graph)
 
-    if outports is not False:
+        for (port_name, content) in initializations.items():
+            wrapper.initialize(content, apply.port(port_name))
+
         captures = {}
         for port_name in outports:
             capture_name = 'Capture_{}'.format(port_name)
             capture = wrapper.add_component(capture_name, Capture)
             wrapper.connect(apply.port(port_name), capture.port('IN'))
             captures[port_name] = capture
+        graph = wrapper
 
-    run_graph(wrapper)
+    Network(graph).go()
 
-    if outports is not False:
+    if outports:
         return {name: capture.value for (name, capture) in captures.items()}

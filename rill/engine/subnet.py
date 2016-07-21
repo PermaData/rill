@@ -14,6 +14,22 @@ from rill.engine.exceptions import FlowError
 from rill.engine.packet import Packet
 from rill.utils import classproperty
 
+
+def merge_portdefs(exported, inherited):
+    """
+    merge inherited ports (defined on parent classes or using @inport)
+    with exported ports.
+    """
+    # Inherited ports take precedence, because they belong to the SubGraph.
+    # For example, the description of a port defined on a SubGraph using
+    # @inport can be customized to describe the port's purposed within the
+    # SubGraph as a whole, whereas the description of exported port concerns
+    # only the behavior of its component.
+    # FIXME: check compatibility of things like array, required...
+    exported.update(inherited)
+    return exported
+
+
 # using a component to proxy each exported port has a few side effects:
 # - additional logging output for the extra components
 # - additional threads which aren't necessary
@@ -196,27 +212,22 @@ class SubGraph(with_metaclass(ABCMeta, Component)):
     def inport_definitions(cls):
         if cls.subgraph is None:
             cls._init_graph()
-        # merge ports defined on parent classes or using @inport
-        # FIXME: we need to test the order, and possibly merge definitions.
-        # For example, description given on @inport should override the
-        # description of the exported internal port.
-        exported = [(name, InputPortDefinition.from_port(port, name=name))
-                    for name, port in cls.subgraph.inports.items()]
-        return OrderedDict(super(SubGraph, cls).inport_definitions.items() +
-                           exported)
+        exported = OrderedDict(
+            [(name, InputPortDefinition.from_port(port, name=name))
+             for name, port in cls.subgraph.inports.items()])
+
+        inherited = super(SubGraph, cls).inport_definitions
+        return merge_portdefs(exported, inherited)
 
     @classproperty
     def outport_definitions(cls):
         if cls.subgraph is None:
             cls._init_graph()
-        # merge ports defined on parent classes or using @outport
-        # FIXME: we need to test the order, and possibly merge definitions.
-        # For example, description given on @inport should override the
-        # description of the exported internal port.
-        exported = [(name, OutputPortDefinition.from_port(port, name=name))
-                    for name, port in cls.subgraph.outports.items()]
-        return OrderedDict(super(SubGraph, cls).outport_definitions.items() +
-                           exported)
+        exported = OrderedDict(
+            [(name, OutputPortDefinition.from_port(port, name=name))
+             for name, port in cls.subgraph.outports.items()])
+        inherited = super(SubGraph, cls).outport_definitions
+        return merge_portdefs(exported, inherited)
 
     @classmethod
     def _init_graph(cls):
@@ -256,12 +267,12 @@ class SubGraph(with_metaclass(ABCMeta, Component)):
     def execute(self):
         # self.get_components().clear()
         # FIXME: are these supposed to be the same as null ports?
-        sub_end_port = None  # self.outports.get("*SUBEND")
-        sub_in_port = None  # self.inports.get("*CONTROL")
-        if sub_in_port is not None:
-            p = sub_in_port.receive()
-            if p is not None:
-                self.drop(p)
+        # sub_end_port = None  # self.outports.get("*SUBEND")
+        # sub_in_port = None  # self.inports.get("*CONTROL")
+        # if sub_in_port is not None:
+        #     p = sub_in_port.receive()
+        #     if p is not None:
+        #         self.drop(p)
 
         # use fields instead!
         # tracing = parent.tracing
@@ -278,8 +289,9 @@ class SubGraph(with_metaclass(ABCMeta, Component)):
 
         network = self._build_network()
         network.initiate()
-        # activate_all()
         network.wait_for_all()
+
+        # FIXME: not sure what purpose this serves
         for inp in self.inports:
             if inp.is_static() and not inp.is_null():
                 inp.close()
@@ -290,8 +302,8 @@ class SubGraph(with_metaclass(ABCMeta, Component)):
 
         # status = StatusValues.TERMINATED # will not be set if never activated
         # parent.indicate_terminated(self)
-        if sub_end_port is not None:
-            sub_end_port.send(Packet(None, self))
+        # if sub_end_port is not None:
+        #     sub_end_port.send(Packet(None, self))
 
     def get_children(self):
         return list(self.subgraph.get_components().values())

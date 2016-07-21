@@ -7,7 +7,7 @@ import rill.engine.utils
 rill.engine.utils.patch()
 
 from rill.engine.exceptions import FlowError
-from rill.engine.network import Network, Graph, run_graph, apply_graph
+from rill.engine.network import Network, Graph, run_graph
 from rill.engine.outputport import OutputPort
 from rill.engine.inputport import InputPort
 from rill.engine.runner import ComponentRunner
@@ -542,11 +542,11 @@ def test_network_apply():
     graph.export('Add2.IN2', 'IN3')
     graph.export('Add2.OUT', 'OUT')
 
-    outputs = apply_graph(graph, {
+    outputs = run_graph(graph, {
         'IN1': 1,
         'IN2': 3,
         'IN3': 6
-    })
+    }, capture_results=True)
 
     assert outputs['OUT'] == 10
 
@@ -565,7 +565,7 @@ def test_network_apply_with_outputs():
     graph.export('Add2.OUT', 'OUT')
     graph.export('Kick.OUT', 'Kick_OUT')
 
-    outputs = apply_graph(graph, {
+    outputs = run_graph(graph, {
         'IN1': 1,
         'IN2': 3,
         'IN3': 6
