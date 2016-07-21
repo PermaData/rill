@@ -477,7 +477,7 @@ class Connection(BaseConnection):
 
         self.inport = inport
         self.outports.add(outport)
-        outport._connection = self
+        outport._connections.append(self)
 
     def is_closed(self):
         """

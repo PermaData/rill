@@ -71,7 +71,7 @@ class OutputPort(Port, OutputInterface):
         -------
         bool
         """
-        return bool(self._sender_count)
+        return self._sender_count == 0
 
     def is_connected(self):
         return bool(self._connections)
