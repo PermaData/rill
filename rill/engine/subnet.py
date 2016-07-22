@@ -247,13 +247,13 @@ class SubGraph(with_metaclass(ABCMeta, Component)):
         # avoid side-effects
         graph = self.subgraph.copy()
         for (name, internal_port) in graph.inports.items():
-            subcomp = graph.add_component('_' + name, SubIn,
-                                          PROXIED=self.ports[name])
+            subcomp = graph.add_component('_' + name, SubIn)
+            subcomp.initialize(self.ports[name], subcomp.ports.PROXIED)
             graph.connect(subcomp.ports.OUT, internal_port)
 
         for (name, internal_port) in graph.outports.items():
-            subcomp = graph.add_component('_' + name, SubOut,
-                                          PROXIED=self.ports[name])
+            subcomp = graph.add_component('_' + name, SubOut)
+            subcomp.initialize(self.ports[name], subcomp.ports.PROXIED)
             graph.connect(internal_port, subcomp.ports.IN)
 
         # don't do deadlock testing in sub graphs - you need to consider

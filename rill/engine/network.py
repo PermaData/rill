@@ -140,7 +140,10 @@ class Graph(object):
             receiver = comp.port(name, kind='in')
             if value is None and not receiver.required:
                 continue
-            self.initialize(value, receiver)
+            if isinstance(value, (OutputPort, OutputArray, InputPort, InputArray)):
+                self.connect(value, receiver)
+            else:
+                self.initialize(value, receiver)
         return comp
 
     def add_graph(self, name, graph, **initializations):
