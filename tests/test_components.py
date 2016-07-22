@@ -7,7 +7,7 @@ import rill.engine.utils
 rill.engine.utils.patch()
 
 from rill.engine.exceptions import FlowError
-from rill.engine.network import Network, Graph, run_graph, apply_graph
+from rill.engine.network import Network, Graph, run_graph
 from rill.engine.outputport import OutputPort
 from rill.engine.inputport import InputPort
 from rill.engine.runner import ComponentRunner
@@ -163,6 +163,45 @@ def test_component_with_inheritance():
     b = graph.add_component('b', B)
     assert names(b.ports, include_null=True) == [
         IN_NULL, 'IN', 'OPT', OUT_NULL, 'OUT']
+
+
+def test_component_spec():
+    assert GenerateTestData.get_spec() == {
+        'name': 'tests.components/GenerateTestData',
+        'description': '"Generates stream of packets under control of a counter',
+        'inPorts': [
+            {
+                'addressable': False,
+                'description': '',
+                'id': 'wait',
+                'required': False,
+                'type': 'bang'},
+            {
+                'addressable': False,
+                'default': 1,
+                'description': 'Count of packets to be generated',
+                'id': 'COUNT',
+                'required': False,
+                'type': 'int'
+            }
+        ],
+        'outPorts': [
+            {
+                'addressable': False,
+                'description': '',
+                'id': 'done',
+                'required': False,
+                'type': 'bang'},
+            {
+                'addressable': False,
+                'description': 'Generated stream',
+                'id': 'OUT',
+                'required': False,
+                'type': 'string'
+            }
+        ],
+        'subgraph': False
+    }
 
 
 @pytest.mark.xfail(is_patched, reason='order is ACB instead of ABC')
@@ -542,11 +581,11 @@ def test_network_apply():
     graph.export('Add2.IN2', 'IN3')
     graph.export('Add2.OUT', 'OUT')
 
-    outputs = apply_graph(graph, {
+    outputs = run_graph(graph, {
         'IN1': 1,
         'IN2': 3,
         'IN3': 6
-    })
+    }, capture_results=True)
 
     assert outputs['OUT'] == 10
 
@@ -565,7 +604,7 @@ def test_network_apply_with_outputs():
     graph.export('Add2.OUT', 'OUT')
     graph.export('Kick.OUT', 'Kick_OUT')
 
-    outputs = apply_graph(graph, {
+    outputs = run_graph(graph, {
         'IN1': 1,
         'IN2': 3,
         'IN3': 6

@@ -38,10 +38,10 @@ def submit():
 @inport("IN")
 class PassthruNet(SubGraph):
     @classmethod
-    def define(cls, net):
-        net.add_component("Pass", Passthru)
-        net.export("Pass.OUT", "OUT")
-        net.export("Pass.IN", "IN")
+    def define(cls, graph):
+        graph.add_component("Pass", Passthru)
+        graph.export("Pass.OUT", "OUT")
+        graph.export("Pass.IN", "IN")
 
 
 # @outport("OUT")
