@@ -248,12 +248,12 @@ class SubGraph(with_metaclass(ABCMeta, Component)):
         graph = self.subgraph.copy()
         for (name, internal_port) in graph.inports.items():
             subcomp = graph.add_component('_' + name, SubIn)
-            subcomp.initialize(self.ports[name], subcomp.ports.PROXIED)
+            graph.initialize(self.ports[name], subcomp.ports.PROXIED)
             graph.connect(subcomp.ports.OUT, internal_port)
 
         for (name, internal_port) in graph.outports.items():
             subcomp = graph.add_component('_' + name, SubOut)
-            subcomp.initialize(self.ports[name], subcomp.ports.PROXIED)
+            graph.initialize(self.ports[name], subcomp.ports.PROXIED)
             graph.connect(internal_port, subcomp.ports.IN)
 
         # don't do deadlock testing in sub graphs - you need to consider

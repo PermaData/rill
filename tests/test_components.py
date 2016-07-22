@@ -165,6 +165,45 @@ def test_component_with_inheritance():
         IN_NULL, 'IN', 'OPT', OUT_NULL, 'OUT']
 
 
+def test_component_spec():
+    assert GenerateTestData.get_spec() == {
+        'name': 'tests.components/GenerateTestData',
+        'description': '"Generates stream of packets under control of a counter',
+        'inPorts': [
+            {
+                'addressable': False,
+                'description': '',
+                'id': 'wait',
+                'required': False,
+                'type': 'bang'},
+            {
+                'addressable': False,
+                'default': 1,
+                'description': 'Count of packets to be generated',
+                'id': 'COUNT',
+                'required': False,
+                'type': 'int'
+            }
+        ],
+        'outPorts': [
+            {
+                'addressable': False,
+                'description': '',
+                'id': 'done',
+                'required': False,
+                'type': 'bang'},
+            {
+                'addressable': False,
+                'description': 'Generated stream',
+                'id': 'OUT',
+                'required': False,
+                'type': 'string'
+            }
+        ],
+        'subgraph': False
+    }
+
+
 @pytest.mark.xfail(is_patched, reason='order is ACB instead of ABC')
 # @requires_patch
 def test_multiple_inputs(graph, discard):
