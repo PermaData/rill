@@ -53,7 +53,8 @@ class ComponentRunner(Greenlet):
         self.curr_outport = None  # set externally
 
         # FIXME: allow this value to be set.  should we read it from the Network, or do we need per-component control?
-        self.ignore_packet_count_error = False
+        # FIXME: this feature is broken right now due to multiple output ports
+        self.ignore_packet_count_error = True
         self._status = StatusValues.NOT_STARTED
 
     def __str__(self):

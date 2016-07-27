@@ -471,10 +471,6 @@ class Connection(BaseConnection):
         else:
             self._queue = deque(maxlen=capacity)
 
-        if outport.is_connected():
-            raise FlowError(
-                "{}: Output port is already connected".format(outport))
-
         self.inport = inport
         self.outports.add(outport)
         outport._connections.append(self)
