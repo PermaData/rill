@@ -243,7 +243,8 @@ def get_graph_messages(graph, graph_id):
             'graph': graph_id,
             'public': public_port,
             'node': inner_port['process'],
-            'port': inner_port['port']
+            'port': inner_port['port'],
+            'metadata': inner_port['metadata']
         })
 
     for public_port, inner_port in definition['outports'].items():
@@ -251,7 +252,8 @@ def get_graph_messages(graph, graph_id):
             'graph': graph_id,
             'public': public_port,
             'node': inner_port['process'],
-            'port': inner_port['port']
+            'port': inner_port['port'],
+            'metadata': inner_port['metadata']
         })
 
 
@@ -625,12 +627,12 @@ class Runtime(object):
             # message is when noflo initializes the inport to [] (see initialize_port as well)
             return graph.uninitialize(target_port)._content
 
-    def add_export(self, graph_id, node, port, public):
+    def add_export(self, graph_id, node, port, public, metadata={}):
         """
         Add inport or outport to graph
         """
         graph = self.get_graph(graph_id)
-        graph.export("{}.{}".format(node, port), public)
+        graph.export("{}.{}".format(node, port), public, metadata)
 
     def remove_inport(self, graph_id, public):
         """
@@ -645,6 +647,20 @@ class Runtime(object):
         """
         graph = self.get_graph(graph_id)
         graph.remove_outport(public)
+
+    def change_inport(self, graph_id, public, metadata):
+        """
+        Change inport metadata
+        """
+        graph = self.get_graph(graph_id)
+        graph.inport_metadata[public] = metadata
+
+    def change_outport(self, graph_id, public, metadata):
+        """
+        Change inport metadata
+        """
+        graph = self.get_graph(graph_id)
+        graph.outport_metadata[public] = metadata
 
 
 clients = {}
@@ -683,12 +699,14 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
 
     def on_open(self):
         self.client_id = uuid.uuid4()
+        print 'connected: {}'.format(str(self.client_id))
         clients[self.client_id] = self
         self.logger.info("Connection opened")
 
     def on_close(self, reason):
+        del clients[self.client_id]
+        print 'disconnected: {}'.format(str(self.client_id))
         self.client_id = None
-        clients[self.client_id] = None
         self.logger.info("Connection closed. Reason: {}".format(reason))
 
     def on_message(self, message, **kwargs):
@@ -911,7 +929,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         # Exported ports
         elif command in ('addinport', 'addoutport'):
             self.runtime.add_export(get_graph(), payload['node'],
-                                    payload['port'], payload['public'])
+                                    payload['port'], payload['public'], payload['metadata'])
             update_subnet(get_graph())
         elif command == 'removeinport':
             self.runtime.remove_inport(get_graph(), payload['public'])
@@ -919,6 +937,12 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         elif command == 'removeoutport':
             self.runtime.remove_outport(get_graph(), payload['public'])
             update_subnet(get_graph())
+        elif command == 'changeinport':
+            self.runtime.change_inport(
+                get_graph(), payload['public'], payload['metadata'])
+        elif command == 'changeoutport':
+            self.runtime.change_outport(
+                get_graph(), payload['public'], payload['metadata'])
         # Metadata changes
         elif command == 'changenode':
             metadata = self.runtime.set_node_metadata(get_graph(),
@@ -961,6 +985,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         # acknowledgement
         if send_ack:
             self.send('graph', command, payload)
+            print "CLIENTS: {}".format(len(clients.items()))
             for client_id, client in clients.items():
                 if client_id != self.client_id:
                     client.send('graph', command, payload)
@@ -974,7 +999,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         command : str
         payload : dict
         """
-        def send_status(cmd, g, timestamp=True):
+        def send_status(cmd, g, timestamp=True, broadcast=False):
             started, running = self.runtime.get_status(g)
             data = {
                 'graph': g,
@@ -986,6 +1011,10 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
                 data['time'] = datetime.datetime.now().isoformat()
 
             self.send('network', cmd, data)
+            if broadcast:
+                for client_id, client in clients.items():
+                    if client_id != self.client_id:
+                        client.send('network', cmd, data)
             # FIXME: hook up component logger to and output handler
             # self.send('network', 'output', {'message': 'TEST!'})
             # if started and running:
@@ -1002,12 +1031,13 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         if command == 'getstatus':
             send_status('status', graph_id, timestamp=False)
         elif command == 'start':
-            callback = functools.partial(send_status, 'stopped', graph_id)
+            callback = functools.partial(
+                send_status, 'stopped', graph_id, broadcast=True)
             self.runtime.start(graph_id, callback)
-            send_status('started', graph_id)
+            send_status('started', graph_id, broadcast=True)
         elif command == 'stop':
             self.runtime.stop(graph_id)
-            send_status('stopped', graph_id)
+            send_status('stopped', graph_id, broadcast=True)
         elif command == 'debug':
             self.runtime.set_debug(graph_id, payload['enable'])
             self.send('network', 'debug', payload)

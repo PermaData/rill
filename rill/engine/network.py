@@ -35,8 +35,11 @@ class Graph(object):
         # exported inports and outports
         # type: OrderedDict[str, rill.engine.inputport.InputPort]
         self.inports = OrderedDict()
+        self.inport_metadata = OrderedDict()
+
         # type: OrderedDict[str, rill.engine.inputport.OutputPort]
         self.outports = OrderedDict()
+        self.outport_metadata = OrderedDict()
 
     def __repr__(self):
         return '{}(name={!r})'.format(self.__class__.__name__, self.name)
@@ -243,7 +246,7 @@ class Graph(object):
 
     # Ports --
 
-    def export(self, internal_port, external_port_name):
+    def export(self, internal_port, external_port_name, metadata={}):
         """
         Exports component port for connecting to other networks
         as a sub network
@@ -259,15 +262,19 @@ class Graph(object):
 
         if isinstance(internal_port, InputPort):
             self.inports[external_port_name] = internal_port
+            self.inport_metadata[external_port_name] = metadata
 
         elif isinstance(internal_port, OutputPort):
             self.outports[external_port_name] = internal_port
+            self.outport_metadata[external_port_name] = metadata
 
     def remove_inport(self, external_port_name):
         del self.inports[external_port_name]
+        del self.inport_metadata[external_port_name]
 
     def remove_outport(self, external_port_name):
         del self.outports[external_port_name]
+        del self.outport_metadata[external_port_name]
 
     def get_component_port(self, arg, index=None, kind=None):
         """
@@ -470,13 +477,15 @@ class Graph(object):
         for (name, inport) in self.inports.items():
             definition['inports'][name] = {
                 'process': inport.component.get_name(),
-                'port': inport.name
+                'port': inport.name,
+                'metadata': self.inport_metadata.get(name, {})
             }
 
         for (name, outport) in self.outports.items():
             definition['outports'][name] = {
                 'process': outport.component.get_name(),
-                'port': outport.name
+                'port': outport.name,
+                'metadata': self.outport_metadata.get(name, {})
             }
 
         return definition
