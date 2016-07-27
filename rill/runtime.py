@@ -196,7 +196,7 @@ def get_graph_messages(graph, graph_id):
 
     Params
     ------
-    net : ``rill.engine.network.Graph``
+    graph : ``rill.engine.network.Graph``
     graph_id : str
         id of graph to serialize
 

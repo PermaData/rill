@@ -741,7 +741,7 @@ class EagerInputCollection(BaseInputCollection):
                     all_drained = False
             if all_drained:
                 self.receiver.trace_funcs(
-                    "Ending next_port - array port drained")
+                    "Ending next_port - all drained")
                 return None
             else:
                 self.receiver.trace_locks("gpwd - lock ")
@@ -816,12 +816,13 @@ class SynchronizedInputCollection(BaseInputCollection):
         group = gevent.pool.Group()
         result = group.map(lambda x: x.receive(), self.ports())
         valid = [p for p in result if p is not None]
-        if valid != result:
+        if len(valid) != len(result):
             self.close()
             for p in valid:
                 p.drop()
             return
 
+        # FIXME: maybe this should be configurable, or explicitly set using repeat()
         # initialization ports are treated like constants: they repeat
         # forever as long as there is a non-static port still open.
         for port in self.static_ports():
