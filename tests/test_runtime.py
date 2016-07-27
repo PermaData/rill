@@ -104,13 +104,15 @@ def test_get_graph_messages():
         'graph': graph_id,
         'public': 'INPORT',
         'node': outside.get_name(),
-        'port': 'IN'
+        'port': 'IN',
+        'metadata': {}
     }) in messages
     assert ('addoutport', {
         'graph': graph_id,
         'public': 'OUTPORT',
         'node': passthru.get_name(),
-        'port': 'OUT'
+        'port': 'OUT',
+        'metadata': {}
     }) in messages
 
 
