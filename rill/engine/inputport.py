@@ -137,6 +137,8 @@ class InputPort(Port, InputInterface):
         super(InputPort, self).__init__(component, name, **kwargs)
         self.default = default
         self.auto_receive = static
+        # type: BaseConnection
+        self._connection = None
 
     def open(self):
         if not self.is_connected() and self.default is not NOT_SET:
@@ -469,13 +471,9 @@ class Connection(BaseConnection):
         else:
             self._queue = deque(maxlen=capacity)
 
-        if outport.is_connected():
-            raise FlowError(
-                "{}: Output port is already connected".format(outport))
-
         self.inport = inport
         self.outports.add(outport)
-        outport._connection = self
+        outport._connections.append(self)
 
     def is_closed(self):
         """

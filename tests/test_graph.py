@@ -152,28 +152,28 @@ def test_network_deserialization(serialized_graph):
     Generate = graph.get_component('Generate')
     Merge = graph.get_component('Merge')
 
-    assert Counter1.ports.OUT._connection.inport.component is Pass
+    assert Counter1.ports.OUT._connections[0].inport.component is Pass
     assert Counter1.metadata == {
         'x': 20.0,
         'y': 300.5
     }
-    assert Pass.ports.OUT._connection.inport.component is Discard1
+    assert Pass.ports.OUT._connections[0].inport.component is Discard1
     assert Counter1.ports.IN._connection._content is 5
 
     assert (
-        Generate.ports.OUT.get_element(0)._connection.inport.component is Merge
+        Generate.ports.OUT.get_element(0)._connections[0].inport.component is Merge
     )
 
     assert (
-        Generate.ports.OUT.get_element(1)._connection.inport.component is Merge
+        Generate.ports.OUT.get_element(1)._connections[0].inport.component is Merge
     )
 
     assert (
-        Generate.ports.OUT.get_element(0)._connection.inport.index is 1
+        Generate.ports.OUT.get_element(0)._connections[0].inport.index is 1
     )
 
     assert (
-        Generate.ports.OUT.get_element(1)._connection.inport.index is 2
+        Generate.ports.OUT.get_element(1)._connections[0].inport.index is 2
     )
 
     expected = graph.to_dict()
@@ -324,7 +324,7 @@ def test_export_of_exports():
     Head = graph.get_component('Head')
     Tail = graph.get_component('Tail')
 
-    assert Head.ports.OUT._connection.inport.component is Tail
+    assert Head.ports.OUT._connections[0].inport.component is Tail
 
     expected = graph.to_dict()
 

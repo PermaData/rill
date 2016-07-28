@@ -166,10 +166,6 @@ class Port(BasePort):
     Base class for all singular (non-array) ports.
     """
 
-    def __init__(self, *args, **kwargs):
-        super(Port, self).__init__(*args, **kwargs)
-        self._connection = None
-
     def validate_packet_contents(self, packet_content):
         """
         Validate packet data.
@@ -205,6 +201,7 @@ class Port(BasePort):
     def is_array(self):
         return False
 
+    @abstractmethod
     def is_connected(self):
         """
         Return whether the port is connected
@@ -213,7 +210,7 @@ class Port(BasePort):
         -------
         bool
         """
-        return self._connection is not None
+        raise NotImplementedError
 
     @abstractmethod
     def is_null(self):
