@@ -17,6 +17,7 @@ from past.builtins import basestring
 
 from rill.engine.component import Component
 from rill.engine.inputport import Connection
+from rill.engine.outputport import OutputPort
 from rill.engine.network import Graph, Network
 from rill.engine.subnet import SubGraph, make_subgraph
 from rill.engine.types import FBP_TYPES
@@ -51,7 +52,7 @@ def add_callback(f, callback):
     """
     if not hasattr(f, '_callbacks'):
         # undecorated function: decorate it
-        callbacks = weakref.WeakValueDictionary()
+        callbacks = {}#weakref.WeakValueDictionary()
         callbacks[0] = callback
         @wraps(f)
         def wrapper(*args, **kwargs):

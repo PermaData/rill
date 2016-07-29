@@ -87,13 +87,18 @@ class PortDefinition(object):
         -------
         dict
         """
+        from schematics.types import ModelType
         spec = {
             'id': self.name,
             'description': self.description,
             'addressable': self.array,
             'required': self.required,
         }
-        spec.update(self.type.get_spec())
+        if self.type.has_schema:
+            spec['schema'] = self.type.get_spec()
+        else:
+            spec.update(self.type.get_spec())
+
         return spec
 
 

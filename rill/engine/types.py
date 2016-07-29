@@ -93,6 +93,8 @@ class TypeHandler(with_metaclass(ABCMeta, object)):
     """
     Base class for validating and serializing content.
     """
+    has_schema = False
+
     def __init__(self, type_def):
         self.type_def = type_def
 
@@ -228,6 +230,7 @@ schematics.types.DictType.primitive_type = dict
 
 
 class SchematicsTypeHandler(TypeHandler):
+    has_schema = True
 
     def __init__(self, type_def):
         if inspect.isclass(type_def):
@@ -236,11 +239,7 @@ class SchematicsTypeHandler(TypeHandler):
 
     def get_spec(self):
         # FIXME: warn if primitive_type is not set?
-        spec = {'type': TYPE_MAP.get(self.type_def.primitive_type, 'any')}
-        choices = self.type_def.choices
-        if choices:
-            spec['values'] = [self.to_primitive(c) for c in choices]
-        return spec
+        return to_jsonschema(self.type_def)
 
     def validate(self, value):
         try:
@@ -285,7 +284,7 @@ def _convert_field(field_instance):
         schema = _convert_model(field_instance.model_class)
 
     elif isinstance(field_instance, schematics.types.ListType):
-        subschema = _convert_model(field_instance.model_class),
+        subschema = _convert_model(field_instance.model_class)
         schema = {
             'type': 'array',
             'title': '%s Array' % subschema['title'],
