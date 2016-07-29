@@ -891,96 +891,99 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
                 spec
             )
 
-        # New graph
-        if command == 'clear':
-            self.runtime.new_graph(payload['id'])
-        # Nodes
-        elif command == 'addnode':
-            self.runtime.add_node(get_graph(), payload['id'],
-                                  payload['component'],
-                                  payload.get('metadata', {}))
-        elif command == 'removenode':
-            self.runtime.remove_node(get_graph(), payload['id'])
-        elif command == 'renamenode':
-            self.runtime.rename_node(get_graph(), payload['from'],
-                                     payload['to'])
-        # Edges/connections
-        elif command == 'addedge':
-            metadata = self.runtime.add_edge(get_graph(), payload['src'],
-                                             payload['tgt'],
-                                             payload.get('metadata', {}))
-            # send an immedate followup to set the color based on type
-            send_ack = True
-            payload['metadata'] = metadata
-            self.send('graph', command, payload)
-            self.send('graph', 'changeedge', payload)
-        elif command == 'removeedge':
-            self.runtime.remove_edge(get_graph(), payload['src'],
-                                     payload['tgt'])
-        # IIP / literals
-        elif command == 'addinitial':
-            self.runtime.initialize_port(get_graph(), payload['tgt'],
-                                         payload['src']['data'])
-        elif command == 'removeinitial':
-            iip = self.runtime.uninitialize_port(get_graph(),
-                                                 payload['tgt'])
-            payload['src'] = {'data': iip}
-            # FIXME: hard-wiring metdata here to pass fbp-test
-            payload['metadata'] = {}
-        # Exported ports
-        elif command in ('addinport', 'addoutport'):
-            self.runtime.add_export(get_graph(), payload['node'],
-                                    payload['port'], payload['public'], payload['metadata'])
-            update_subnet(get_graph())
-        elif command == 'removeinport':
-            self.runtime.remove_inport(get_graph(), payload['public'])
-            update_subnet(get_graph())
-        elif command == 'removeoutport':
-            self.runtime.remove_outport(get_graph(), payload['public'])
-            update_subnet(get_graph())
-        elif command == 'changeinport':
-            self.runtime.change_inport(
-                get_graph(), payload['public'], payload['metadata'])
-        elif command == 'changeoutport':
-            self.runtime.change_outport(
-                get_graph(), payload['public'], payload['metadata'])
-        # Metadata changes
-        elif command == 'changenode':
-            metadata = self.runtime.set_node_metadata(get_graph(),
-                                                      payload['id'],
-                                                      payload['metadata'])
-            payload['metadata'] = metadata
-        elif command == 'changeedge':
-            metadata = self.runtime.set_edge_metadata(get_graph(),
-                                                      payload['src'],
-                                                      payload['tgt'],
-                                                      payload['metadata'])
-            payload['metadata'] = metadata
-        elif command == 'getgraph':
-            send_ack = False
-            graph_id = payload['id']
-            try:
-                graph = self.runtime.get_graph(graph_id)
-                graph_messages = get_graph_messages(
-                    graph, graph_id)
-                for command, payload in graph_messages:
-                    self.send('graph', command, payload)
-            except RillRuntimeError as ex:
-                self.runtime.new_graph(graph_id)
+        try:
+            # New graph
+            if command == 'clear':
+                self.runtime.new_graph(payload['id'])
+            # Nodes
+            elif command == 'addnode':
+                self.runtime.add_node(get_graph(), payload['id'],
+                                      payload['component'],
+                                      payload.get('metadata', {}))
+            elif command == 'removenode':
+                self.runtime.remove_node(get_graph(), payload['id'])
+            elif command == 'renamenode':
+                self.runtime.rename_node(get_graph(), payload['from'],
+                                         payload['to'])
+            # Edges/connections
+            elif command == 'addedge':
+                metadata = self.runtime.add_edge(get_graph(), payload['src'],
+                                                 payload['tgt'],
+                                                 payload.get('metadata', {}))
+                # send an immedate followup to set the color based on type
+                send_ack = True
+                payload['metadata'] = metadata
+                self.send('graph', command, payload)
+                self.send('graph', 'changeedge', payload)
+            elif command == 'removeedge':
+                self.runtime.remove_edge(get_graph(), payload['src'],
+                                         payload['tgt'])
+            # IIP / literals
+            elif command == 'addinitial':
+                self.runtime.initialize_port(get_graph(), payload['tgt'],
+                                             payload['src']['data'])
+            elif command == 'removeinitial':
+                iip = self.runtime.uninitialize_port(get_graph(),
+                                                     payload['tgt'])
+                payload['src'] = {'data': iip}
+                # FIXME: hard-wiring metdata here to pass fbp-test
+                payload['metadata'] = {}
+            # Exported ports
+            elif command in ('addinport', 'addoutport'):
+                self.runtime.add_export(get_graph(), payload['node'],
+                                        payload['port'], payload['public'], payload['metadata'])
+                update_subnet(get_graph())
+            elif command == 'removeinport':
+                self.runtime.remove_inport(get_graph(), payload['public'])
+                update_subnet(get_graph())
+            elif command == 'removeoutport':
+                self.runtime.remove_outport(get_graph(), payload['public'])
+                update_subnet(get_graph())
+            elif command == 'changeinport':
+                self.runtime.change_inport(
+                    get_graph(), payload['public'], payload['metadata'])
+            elif command == 'changeoutport':
+                self.runtime.change_outport(
+                    get_graph(), payload['public'], payload['metadata'])
+            # Metadata changes
+            elif command == 'changenode':
+                metadata = self.runtime.set_node_metadata(get_graph(),
+                                                          payload['id'],
+                                                          payload['metadata'])
+                payload['metadata'] = metadata
+            elif command == 'changeedge':
+                metadata = self.runtime.set_edge_metadata(get_graph(),
+                                                          payload['src'],
+                                                          payload['tgt'],
+                                                          payload['metadata'])
+                payload['metadata'] = metadata
+            elif command == 'getgraph':
+                send_ack = False
+                graph_id = payload['id']
+                try:
+                    graph = self.runtime.get_graph(graph_id)
+                    graph_messages = get_graph_messages(
+                        graph, graph_id)
+                    for command, payload in graph_messages:
+                        self.send('graph', command, payload)
+                except RillRuntimeError as ex:
+                    self.runtime.new_graph(graph_id)
 
-        elif command == 'list':
-            send_ack = False
-            for graph_id in self.runtime._graphs.keys():
-                self.send('graph', 'graph', {
-                    'id': graph_id
-                })
+            elif command == 'list':
+                send_ack = False
+                for graph_id in self.runtime._graphs.keys():
+                    self.send('graph', 'graph', {
+                        'id': graph_id
+                    })
 
-            self.send('graph', 'graphsdone', None)
+                self.send('graph', 'graphsdone', None)
 
-        else:
-            self.logger.warn("Unknown command '%s' for protocol '%s'" %
-                             (command, 'graph'))
-            return
+            else:
+                self.logger.warn("Unknown command '%s' for protocol '%s'" %
+                                 (command, 'graph'))
+                return
+        except FlowError as ex:
+            self.send_error('graph', str(ex))
 
         # For any message we respected, send same in return as
         # acknowledgement
