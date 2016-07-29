@@ -16,6 +16,41 @@ except ImportError:
             super(abstractclassmethod, self).__init__(callable)
 
 
+def importable_class_name(klass, assert_valid=False):
+    '''
+    Create an string to use for locating the given class.
+
+    Returns
+    -------
+    str
+    '''
+    import pydoc
+    name = "{}.{}".format(klass.__module__, klass.__name__)
+    if assert_valid:
+        obj = pydoc.locate(name)
+        if obj is None:
+            raise ValueError("Could not locate {} at {}".format(klass, name))
+        elif obj is not klass:
+            raise ValueError("Object {} at {} is not "
+                             "the same as {}".format(obj, name, klass))
+    return name
+
+
+def locate_class(class_location):
+    # pydoc incorrectly raises ErrorDuringImport when gevent is patched in,
+    # so we have to look for the class attribute ourselves.
+    import pydoc
+    mod_name, class_name = class_location.rsplit('.', 1)
+    module = pydoc.locate(mod_name)
+    if module is None:
+        raise ValueError("Failed to find module {!r}".format(mod_name))
+    try:
+        return getattr(module, class_name)
+    except AttributeError:
+        raise ValueError("Failed to find object {!r} in module {!r}".format(
+            class_name, mod_name))
+
+
 class classproperty(object):
     """
     Class for creating properties for un-initialized classes. Works like a
