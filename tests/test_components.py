@@ -271,9 +271,8 @@ def test_basic_connections():
     # make a connection
     graph.connect("Count.OUT", "Discard1.IN")
 
-    with pytest.raises(FlowError):
-        # outports can only have one connection
-        graph.connect("Count.OUT", "Discard2.IN")
+    # outports can have more than one connection
+    graph.connect("Count.OUT", "Discard2.IN")
 
     with pytest.raises(FlowError):
         # connected ports cannot be initialized

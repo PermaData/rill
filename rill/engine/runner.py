@@ -180,7 +180,9 @@ class ComponentRunner(Greenlet):
             "ERROR")
         """
         for child in self.component.get_children():
-            child._runner.terminate(new_status)
+            # may be None if the subgraph has not started yet
+            if child._runner is not None:
+                child._runner.terminate(new_status)
         self.logger.debug("Terminated", component=self)
         self.status = new_status
         # self.parent_network.indicate_terminated(self)
@@ -381,7 +383,7 @@ class ComponentRunner(Greenlet):
                     self.close_ports()
             raise GreenletExit()
 
-        except Exception as e:
+        except Exception as err:
             # don't tell the parent if we are already in the ERROR or TERMINATE state
             # because then the parent told us to terminate
             if self.is_terminated() or self.has_error():
@@ -396,7 +398,7 @@ class ComponentRunner(Greenlet):
 
             if self.parent_network is not None:
                 # record the error and terminate siblings
-                self.parent_network.signal_error(e)
+                self.parent_network.signal_error(err)
             self.close_ports()
 
     def active(self):
