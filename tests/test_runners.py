@@ -16,11 +16,11 @@ def test_self_starting():
 
     static_port = {
         'is_connected.return_value': True,
-        'is_static.return_value': True}
+        'is_initialized.return_value': True}
 
     connected_port = {
         'is_connected.return_value': True,
-        'is_static.return_value': False}
+        'is_initialized.return_value': False}
 
     unconnected_port = {
         'is_connected.return_value': False}

@@ -597,6 +597,7 @@ class Runtime(object):
         # if target_port.is_connected():
         #     graph.disconnect(target_port)
 
+        # FIXME: handle deserialization?
         graph.initialize(data, target_port)
 
     def uninitialize_port(self, graph_id, tgt):
@@ -609,7 +610,7 @@ class Runtime(object):
         graph = self.get_graph(graph_id)
 
         target_port = self._get_port(graph, tgt, kind='in')
-        if target_port.is_static():
+        if target_port.is_initialized():
             # FIXME: so far the case where an uninitialized port receives a uninitialize_port
             # message is when noflo initializes the inport to [] (see initialize_port as well)
             return graph.uninitialize(target_port)._content

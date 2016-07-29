@@ -241,7 +241,7 @@ class ComponentRunner(Greenlet):
         if self.component._self_starting:
             return True
         for port in self.component.inports:
-            if port.is_connected() and not port.is_static():
+            if port.is_connected() and not port.is_initialized():
                 return False
         return True
 
@@ -322,7 +322,7 @@ class ComponentRunner(Greenlet):
                     break
 
                 for inp in self.component.inports:
-                    if inp.is_static() and not inp.is_null():
+                    if inp.is_initialized() and not inp.is_null():
                         inp.open()
 
                 self.trace_funcs(colored("Activated", attrs=['bold']))
@@ -344,7 +344,7 @@ class ComponentRunner(Greenlet):
                 # - tests succeed if we simply hard-wire InitializationConnection to always open
                 # - it ensures that it yields a new result when component is re-activated
                 for inp in self.component.inports:
-                    if inp.is_static() and not inp.is_null():
+                    if inp.is_initialized() and not inp.is_null():
                         inp.close()
                         # if (not icp.is_closed()):
                         #  raise FlowError("Component deactivated with IIP port not closed: " + self.get_name())

@@ -9,6 +9,8 @@ from tests.utils import names
 from rill.engine.exceptions import FlowError
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import InputPort, InputArray
+from rill.engine.types import Stream
+
 from rill.components.basic import Counter
 from rill.components.merge import Group
 from rill.components.timing import SlowPass
@@ -44,7 +46,7 @@ def serialized_graph():
         },
         'connections': [
             {
-                'src': {'data': 5},
+                'src': {'data': [5]},
                 'tgt': {
                     'process': 'Counter1',
                     'port': 'IN'
@@ -136,13 +138,14 @@ def test_network_serialization(serialized_graph):
 
 def test_network_deserialization(serialized_graph):
 
-    graph = Graph.from_dict(serialized_graph, {
+    comp_map = {
         'rill.components.basic/Counter': Counter,
         'rill.components.merge/Group': Group,
         'tests.components/Discard': Discard,
         'tests.subnets/PassthruNet': PassthruNet,
         'tests.components/GenerateArray': GenerateArray
-    })
+    }
+    graph = Graph.from_dict(serialized_graph, component_lookup=comp_map)
 
     assert len(graph.get_components().keys()) == 5
 
@@ -158,7 +161,7 @@ def test_network_deserialization(serialized_graph):
         'y': 300.5
     }
     assert Pass.ports.OUT._connections[0].inport.component is Discard1
-    assert Counter1.ports.IN._connection._content is 5
+    assert Counter1.ports.IN._connection._content == [5]
 
     assert (
         Generate.ports.OUT.get_element(0)._connections[0].inport.component is Merge
@@ -372,9 +375,8 @@ def test_fixed_array_connections():
     graph.connect("Generate.OUT", "Discard2.IN")
     assert gen.ports['OUT'][0].is_connected() is True
 
-    with pytest.raises(FlowError):
-        # outports can only have one connection
-        graph.connect("Generate.OUT[1]", "Discard2.IN")
+    # outports can only have more than one connection
+    graph.connect("Generate.OUT[1]", "Discard2.IN")
 
     with pytest.raises(FlowError):
         # cannot connect outside the fixed range
@@ -450,10 +452,12 @@ def test_add_component():
     graph = Graph()
     gen = graph.add_component("generate", GenerateTestData, COUNT=10)
     assert type(gen.ports.COUNT) is InputPort
-    assert gen.ports.COUNT.is_static()
-    assert gen.ports.COUNT._connection._content == 10
+    assert gen.ports.COUNT.is_initialized()
+    assert gen.ports.COUNT._connection._content == [10]
+    assert type(gen.ports.COUNT._connection._content) is list
 
     with pytest.raises(FlowError):
+        # component already exists
         graph.add_component("generate", GenerateTestData)
 
     def foo(): pass
@@ -471,3 +475,17 @@ def test_optional_fixed_size_array_error():
     gen.init()
     with pytest.raises(FlowError):
         gen.ports.OUT.validate()
+
+
+def test_stream_initialization():
+    graph = Graph()
+    # a single packet with a list of ints
+    passthru1 = graph.add_component("Pass1", SlowPass, IN=[1, 2, 3],
+                                    DELAY=0.1)
+
+    # a stream of int packets
+    passthru2 = graph.add_component("Pass2", SlowPass, IN=Stream([1, 2, 3]),
+                                    DELAY=0.1)
+
+    assert passthru1.ports.IN._connection._content == [[1, 2, 3]]
+    assert passthru2.ports.IN._connection._content == [1, 2, 3]

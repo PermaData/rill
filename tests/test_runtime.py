@@ -92,7 +92,7 @@ def test_get_graph_messages():
     assert ('addinitial', {
         'graph': graph_id,
         'src': {
-            'data': 5,
+            'data': [5],
         },
         'tgt': {
             'node': gen.get_name(),

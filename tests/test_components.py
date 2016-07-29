@@ -90,7 +90,8 @@ def test_aggregation(graph, discard):
     runtwice(graph, (dis, [5]))
 
 
-@requires_patch
+@pytest.mark.xfail(reason='schematics objects will not pickle')
+# @requires_patch
 def test_pickle(graph):
     graph.add_component("Generate", GenerateTestData, COUNT=5)
     passthru = graph.add_component("Pass", SlowPass, DELAY=0.1)

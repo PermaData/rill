@@ -8,6 +8,7 @@ from rill.engine.status import StatusValues
 from rill.engine.port import (Port, ArrayPort, BasePortCollection,
                               PortInterface, IN_NULL)
 from rill.engine.exceptions import FlowError
+from rill.engine.types import Stream
 from rill.utils import NOT_SET
 
 import gevent
@@ -107,7 +108,9 @@ class InputInterface(with_metaclass(ABCMeta, PortInterface)):
         for p in self.iter_packets():
             content = p.get_contents()
             self.component.drop(p)
-            yield content
+            # FIXME: do we want to return the results of validation? this would
+            # allow things like automatically casting int to float
+            yield self.validate_packet_contents(content)
 
             # FIXME: there's some lock stuff in here.  I don't think it applies because the component attr is now static.
             # def set_component(self, receiver):
@@ -159,7 +162,7 @@ class InputPort(Port, InputInterface):
     def is_connected(self):
         return self._connection is not None
 
-    def is_static(self):
+    def is_initialized(self):
         return self.is_connected() and \
                isinstance(self._connection, InitializationConnection)
 
@@ -170,7 +173,6 @@ class InputPort(Port, InputInterface):
         if self.is_connected():
             p = self._connection.receive()
             if p is not None:
-                self.validate_packet_contents(p.get_contents())
                 return p
 
     def initialize(self, static_value):
@@ -185,16 +187,26 @@ class InputPort(Port, InputInterface):
             raise FlowError(
                 "Cannot initialize null port: {}".format(self))
         if self.is_connected():
-            if self.is_static():
+            if not self.is_initialized():
                 raise FlowError(
                     "Port cannot have both an initial packet and a "
                     "connection: {}".format(self))
             else:
                 raise FlowError(
                     "Port is already initialized: {}".format(self))
+        # a Stream instance indicates that each item in the stream should be
+        # yielded as a separate packet.  This is used to differentiate between
+        # a port which may expect a single packet to contain a list of data.
+        if isinstance(static_value, Stream):
+            if self.auto_receive:
+                raise FlowError(
+                    "Static port initialized with a stream of "
+                    "data: {}".format(self))
+            content = [self.validate_packet_contents(p) for p in static_value]
+        else:
+            content = [self.validate_packet_contents(static_value)]
 
-        static_value = self.validate_packet_contents(static_value)
-        self._connection = InitializationConnection(static_value, self)
+        self._connection = InitializationConnection(content, self)
 
     def uninitialize(self):
         """
@@ -209,7 +221,7 @@ class InputPort(Port, InputInterface):
             raise FlowError(
                 "Cannot uninitialize null port: {}".format(self))
 
-        if not self.is_static():
+        if not self.is_initialized():
             raise FlowError(
                 "Port is not initialized: {}".format(self))
         conn = self._connection
@@ -289,9 +301,17 @@ class InitializationConnection(BaseConnection):
     """
 
     def __init__(self, content, inport):
+        """
+
+        Parameters
+        ----------
+        content : list
+        inport
+        """
         # the connected InputPort
         self.inport = inport
         self._content = content
+        self._content_iter = None
         self._is_closed = True
         self.metadata = {}
 
@@ -307,12 +327,14 @@ class InitializationConnection(BaseConnection):
         Close Initialization Connection
         """
         self._is_closed = True
+        self._content_iter = None
 
     def open(self):
         """
         (Re)open Initialization Connection
         """
         self._is_closed = False
+        self._content_iter = iter(self._content)
 
     def is_closed(self):
         return self._is_closed
@@ -331,14 +353,15 @@ class InitializationConnection(BaseConnection):
         See `InputInterface.receive`.
         """
         if not self.is_closed():
-            p = self.inport.component.create(self._content)
-            self.inport.component.network.receives += 1
-            self.receiver.logger.debug("Received Initial: " + str(p),
-                                       port=self.inport)
-            self.close()
-        else:
-            p = None
-        return p
+            try:
+                p = self.inport.component.create(next(self._content_iter))
+                self.inport.component.network.receives += 1
+                self.receiver.logger.debug("Received Initial: " + str(p),
+                                           port=self.inport)
+                return p
+            except StopIteration:
+                self.close()
+        return None
 
 
 class Connection(BaseConnection):
@@ -419,7 +442,6 @@ class Connection(BaseConnection):
 
         # release any senders waiting for slots.
         # they will check for a closed state and exit
-        # notify_all()
         self._not_empty.set()
         self._not_full.set()
 
@@ -439,12 +461,9 @@ class Connection(BaseConnection):
                                                     StatusValues.NOT_STARTED):
                             self.receiver.activate()
                         else:
-                            # FIXME: Threads
-                            # notify_all()
                             # release any senders waiting for slots.
                             # they will check for a closed state and exit
                             self._not_empty.set()
-                            # self._not_full.set()
 
         finally:
             self.receiver.trace_locks("sender closed - unlock",
@@ -526,8 +545,6 @@ class Connection(BaseConnection):
             self.receiver.curr_conn = self
             self.receiver.logger.debug("Receive suspended", port=self.inport)
 
-            # FIXME: threads
-            # wait()
             self._not_empty.wait()
 
             if self.receiver.is_terminated() or self.receiver.has_error():
@@ -559,8 +576,6 @@ class Connection(BaseConnection):
         # consume one packet
         packet = self._queue.popleft()
 
-        # FIXME: threads
-        # notify_all() # only needed if it was full
         self._not_full.set()
         self._not_full.clear()
 
@@ -773,13 +788,13 @@ class SynchronizedInputCollection(BaseInputCollection):
     of ports.
     """
 
-    def is_static(self):
-        return all(p.is_static() for p in self.ports())
+    def is_initialized(self):
+        return all(p.is_initialized() for p in self.ports())
 
     # FIXME: cache this
     def static_ports(self):
         ports = self.ports()
-        static = [p for p in ports if p.is_static()]
+        static = [p for p in ports if p.is_initialized()]
         if len(static) != len(ports):
             return static
         else:

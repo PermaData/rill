@@ -18,6 +18,7 @@ from rill.engine.component import Component, logger
 from rill.engine.status import StatusValues
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import Connection, InputPort, InputArray, InitializationConnection
+from rill.engine.types import serialize, deserialize, Stream
 from rill.engine.utils import CountDownLatch
 
 
@@ -170,7 +171,7 @@ class Graph(object):
         # assert not self.active
         component = self._components.pop(name)
         for inport in component.inports:
-            if inport.is_connected() and not inport.is_static():
+            if inport.is_connected() and not inport.is_initialized():
                 for outport in inport._connection.outports:
                     self.disconnect(inport, outport)
         for outport in component.outports:
@@ -435,9 +436,17 @@ class Graph(object):
                 conn = inport._connection
                 if isinstance(conn, InitializationConnection):
                     content = conn._content
-                    content = inport.type.to_primitive(content)
+                    # FIXME: we need to determine the most reliable way to
+                    # serialize `content`.
+                    # - inport.type is only good when type is not "any".
+                    # - serialize() must store extra info about rich types,
+                    #   which could confuse a client
+                    # - another option is to store the type on the Packet
+                    # content = inport.type.to_primitive(content)
+                    if inport.auto_receive:
+                        content = content[0]
                     connection = {
-                        'src': {'data': content},
+                        'src': {'data': serialize(content)},
                         'tgt': portdef(comp_name, inport)
                     }
                     if conn.metadata:
@@ -482,14 +491,14 @@ class Graph(object):
         ----------
         definition : dict
             network structure according to fbp json standard
-        component_lookup : Dict[str, ``rill.enginge.component.Component``]
-            maps of component name to component
+        component_lookup : Dict[str, Type[``rill.enginge.component.Component``]]
+            maps of component name to component class
 
         Returns
         -------
         ``rill.enginge.network.Graph``
         """
-        import pydoc
+        from rill.utils import locate_class
 
         def _port(p):
             return graph.get_component_port((p['process'], p['port']),
@@ -500,10 +509,7 @@ class Graph(object):
             if component_lookup:
                 comp_class = component_lookup[spec['component']]
             else:
-                comp_class = pydoc.locate(spec['component'].replace('/', '.'))
-                if comp_class is None:
-                    raise FlowError("Could not find component {}".format(
-                        spec['component']))
+                comp_class = locate_class(spec['component'].replace('/', '.'))
             component = graph.add_component(name, comp_class)
             if spec.get('metadata'):
                 component.metadata.update(spec['metadata'])
@@ -512,8 +518,11 @@ class Graph(object):
             tgt = _port(connection['tgt'])
             if 'data' in connection['src']:
                 # static initializer
-                content = connection['src']['data']
-                content = tgt.type.to_native(content)
+                data = connection['src']['data']
+                content = deserialize(data)
+                if not tgt.auto_receive:
+                    content = Stream(content)
+                # content = tgt.type.to_native(content)
                 graph.initialize(content, tgt)
             else:
                 # connection
@@ -698,7 +707,7 @@ class Network(object):
         self_starters = []
         for runner in self.runners:
             for port in runner.component.inports:
-                if port.is_connected() and not port.is_static() and \
+                if port.is_connected() and not port.is_initialized() and \
                         port._connection._queue:
                     logger.info("Existing data in connection buffer: {}",
                                 args=[port])

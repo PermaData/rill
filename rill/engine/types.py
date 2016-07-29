@@ -335,7 +335,7 @@ class SchematicsTypeHandler(TypeHandler):
                     return schematics_type
 
     @classmethod
-    def register_type(cls, type, schematics_type, primitive_type=None,
+    def register_type(cls, type, type_def, primitive_type=None,
                       allow_subclasses=False, overwrite=False):
         """
         Add to the list of known types.
@@ -343,7 +343,7 @@ class SchematicsTypeHandler(TypeHandler):
         Parameters
         ----------
         type
-        schematics_type
+        type_def
         primitive_type
         allow_subclasses
 
@@ -352,35 +352,34 @@ class SchematicsTypeHandler(TypeHandler):
         None
         """
         # assert that schematics_type is valid:
-        if not (inspect.isclass(schematics_type) or
-                issubclass(schematics_type, schematics.types.BaseType)):
-            raise ValueError("schematics_type must be a BaseType "
-                             "sub-class: {}".format(schematics_type))
-        elif issubclass(schematics_type, schematics.types.CompoundType):
-            raise ValueError("schematics_type must not be "
-                             "compound: : {}".format(schematics_type))
+        if not cls.is_schematics_obj(type_def):
+            raise ValueError("type_def must be a BaseType "
+                             "sub-class or instance: {}".format(type_def))
+        # elif issubclass(type_def, schematics.types.CompoundType):
+        #     raise ValueError("schematics_type must not be "
+        #                      "compound: : {}".format(type_def))
 
         if not inspect.isclass(type):
             raise ValueError("type must be a class: {}".format(type))
 
-        curr_primitive_type = getattr(schematics_type, 'primitive_type', None)
+        curr_primitive_type = getattr(type_def, 'primitive_type', None)
         if primitive_type is not None:
             if curr_primitive_type is not None:
                 raise ValueError("{} already has a primitive_type".format(type))
-            schematics_type.primitive_type = primitive_type
+            type_def.primitive_type = primitive_type
         elif curr_primitive_type is None:
             # FIXME: logger.warn()
             print("Registered schematics type {} does not have a "
                   "primitive_type attribute: this will lead to problems during "
-                  "serialization".format(schematics_type))
+                  "serialization".format(type_def))
 
         if not overwrite and type in cls._type_lookup:
             raise ValueError("tye {} is already registered".format(type))
 
         if allow_subclasses:
-            cls._subtype_lookup[len(type.mro())].append((type, schematics_type))
+            cls._subtype_lookup[len(type.mro())].append((type, type_def))
 
-        cls._type_lookup[type] = schematics_type
+        cls._type_lookup[type] = type_def
 
 
 def serialize(obj):
@@ -469,7 +468,15 @@ def _register_builtin_types():
                                         schematics.types.DateType)
     SchematicsTypeHandler.register_type(NoneType,
                                         schematics.types.BaseType)
+    # compound types
 
+    SchematicsTypeHandler.register_type(list,
+                                        schematics.types.ListType(
+                                            schematics.types.BaseType))
+
+    SchematicsTypeHandler.register_type(tuple,
+                                        schematics.types.ListType(
+                                            schematics.types.BaseType))
 
 _register_builtin_types()
 register_handler(SchematicsTypeHandler)

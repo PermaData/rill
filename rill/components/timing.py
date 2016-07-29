@@ -23,12 +23,11 @@ def Heartbeat(INTERVAL, OUT):
 @component
 @outport("OUT")
 @inport("IN")
-@inport("DELAY", type=float, required=True)
-def SlowPass(IN, DELAY, OUT):
+@inport("DELAY", type=float, required=True, static=True)
+def SlowPass(IN, delay, OUT):
     """
     Pass a stream of packets to an output stream with a delay between packets
     """
-    delay = DELAY.receive_once()
     # FIXME: this has to be disabled for the pickle/resume test to succeed. make test more robust
     # time.sleep(delay)
     for p in IN:

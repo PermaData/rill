@@ -70,7 +70,7 @@ class SubIn(ExportComponent):
         self.logger.debug("Accessing input port: {}".format(inport))
 
         old_receiver = inport.component
-        if inport.is_static():
+        if inport.is_initialized():
             iic = InitializationConnection(inport._connection._content, inport)
 
             iic.open()
@@ -101,7 +101,7 @@ class SubInSS(ExportComponent):
         self.logger.debug("Accessing input port: {}".format(inport))
 
         old_receiver = inport.component
-        if inport.is_static():
+        if inport.is_initialized():
             raise FlowError("SubinSS cannot support IIP - use Subin")
 
         inport.component = self
@@ -293,7 +293,7 @@ class SubGraph(with_metaclass(ABCMeta, Component)):
 
         # FIXME: not sure what purpose this serves
         for inp in self.inports:
-            if inp.is_static() and not inp.is_null():
+            if inp.is_initialized() and not inp.is_null():
                 inp.close()
 
         # Iterator allout = (outports.values()).iterator()
