@@ -92,6 +92,14 @@ class Graph(object):
 
     # Components --
 
+    def _get_unique_name(self, basename):
+        i = 0
+        name = basename
+        while name in self._components:
+            i += 1
+            name = basename + str(i)
+        return name
+
     def add_component(self, *args, **initializations):
         """
         Instantiate a component and add it to the network.
@@ -109,17 +117,13 @@ class Graph(object):
         """
         if len(args) == 1:
             arg = args[0]
-            if issubclass(arg, Component):
+            if isinstance(arg, Component):
                 comp = arg
                 name = comp.name
             elif isclass(arg) and issubclass(arg, Component):
                 comp_type = arg
                 name = comp_type.type_name or comp_type.__name__
-                basename = name
-                i = 0
-                while name in self._components:
-                    i += 1
-                    name = basename + str(i)
+                name = self._get_unique_name(name)
                 comp = comp_type(name)
             else:
                 raise ValueError()
@@ -844,7 +848,7 @@ class Network(object):
                 if status == StatusValues.SUSP_RECV:
                     objs = [runner.curr_conn]
                 elif status == StatusValues.SUSP_SEND:
-                    objs = [runner.curr_outport._connection]
+                    objs = runner.curr_outport._connections
                 else:
                     objs = [runner]
 
