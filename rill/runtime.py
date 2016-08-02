@@ -12,7 +12,6 @@ from functools import wraps
 
 import gevent
 import geventwebsocket
-from past.builtins import basestring
 
 from rill.engine.component import Component
 from rill.engine.inputport import Connection
@@ -20,6 +19,7 @@ from rill.engine.network import Graph, Network
 from rill.engine.subnet import SubGraph
 from rill.engine.types import FBP_TYPES
 from rill.engine.exceptions import FlowError
+from rill.compat import *
 
 from typing import Union, Any, Iterator, Dict
 
@@ -196,7 +196,7 @@ def get_graph_messages(graph, graph_id):
 
     Params
     ------
-    net : ``rill.engine.network.Graph``
+    graph : ``rill.engine.network.Graph``
     graph_id : str
         id of graph to serialize
 

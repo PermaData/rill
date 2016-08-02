@@ -1,7 +1,6 @@
-from past.builtins import basestring
-
 from rill.utils import ProxyAnnotation, FlagAnnotation
 from rill.engine.portdef import InputPortDefinition, OutputPortDefinition
+from rill.compat import *
 
 __all__ = ['inport', 'outport', 'must_run', 'self_starting', 'component', 'subnet']
 

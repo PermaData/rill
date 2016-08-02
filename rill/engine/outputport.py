@@ -1,14 +1,15 @@
 from abc import ABCMeta, abstractmethod
 
-from future.utils import with_metaclass
 from typing import List, Union, Any
 
 from rill.engine.port import (Port, ArrayPort, BasePortCollection,
                               PortInterface, OUT_NULL)
 from rill.engine.packet import Packet
+from rill.compat import *
 
 
-class OutputInterface(with_metaclass(ABCMeta, PortInterface)):
+@add_metaclass(ABCMeta)
+class OutputInterface(PortInterface):
     """
     Enforces a common interface for all classes which send packets
     """

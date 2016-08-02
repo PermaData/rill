@@ -10,6 +10,8 @@ from urlparse import urlparse
 from datetime import datetime
 import json
 
+from rill.compat import *
+
 
 def create_routes(host, port):
     """

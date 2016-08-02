@@ -1,7 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from collections import deque
 
-from future.utils import with_metaclass
 from typing import Any, Union, Iterable, Tuple
 
 from rill.engine.status import StatusValues
@@ -10,13 +9,15 @@ from rill.engine.port import (Port, ArrayPort, BasePortCollection,
 from rill.engine.exceptions import FlowError
 from rill.engine.types import Stream
 from rill.utils import NOT_SET
+from rill.compat import *
 
 import gevent
 import gevent.event
 import gevent.pool
 
 
-class InputInterface(with_metaclass(ABCMeta, PortInterface)):
+@add_metaclass(ABCMeta)
+class InputInterface(PortInterface):
     """
     Enforces a common interface for all classes which receive packets
     """
@@ -248,7 +249,8 @@ class InputPort(Port, InputInterface):
         return self.is_closed() and self.upstream_count() == 0
 
 
-class BaseConnection(with_metaclass(ABCMeta, object)):
+@add_metaclass(ABCMeta)
+class BaseConnection(object):
     def send(self, packet, outport):
         raise NotImplementedError
 

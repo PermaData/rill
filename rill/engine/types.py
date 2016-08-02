@@ -9,11 +9,9 @@ from types import NoneType
 import schematics.types
 import schematics.models
 
-from future.utils import with_metaclass
-from past.builtins import basestring
-
 from rill.engine.exceptions import TypeHandlerError, PacketValidationError
 from rill.utils import importable_class_name, locate_class
+from rill.compat import *
 
 _type_handlers = []
 
@@ -21,6 +19,7 @@ _type_handlers = []
 # FIXME: str vs unicode
 TYPE_MAP = {
     str: 'string',
+    bytes: 'string',
     bool: 'boolean',
     int: 'int',
     float: 'number',
@@ -104,7 +103,8 @@ def get_type_handler(type_def):
                            "for {!r}".format(type_def))
 
 
-class TypeHandler(with_metaclass(ABCMeta, object)):
+@add_metaclass(ABCMeta)
+class TypeHandler(object):
     """
     Base class for validating and serializing content.
     """

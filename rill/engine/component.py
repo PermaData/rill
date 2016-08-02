@@ -3,7 +3,6 @@ import logging
 import re
 from abc import ABCMeta, abstractmethod
 
-from future.utils import with_metaclass
 from typing import Any, List, Iterable
 
 from rill.engine.port import (PortCollection, flatten_arrays, is_null_port,
@@ -13,6 +12,8 @@ from rill.engine.exceptions import FlowError, ComponentError
 from rill.engine.utils import LogFormatter
 from rill.utils import cache, classproperty
 from rill.decorators import inport, outport
+from rill.compat import *
+
 
 PORT_NAME_REG = r"^([a-zA-Z][_a-zA-Z0-9]*)(?:\[(\d+)\])?$"
 
@@ -23,7 +24,8 @@ logger = LogFormatter(_logger, {})
 
 @inport(IN_NULL)
 @outport(OUT_NULL)
-class Component(with_metaclass(ABCMeta, object)):
+@add_metaclass(ABCMeta)
+class Component(object):
     # type: List[rill.engine.portdef.InputPortDefinition]
     _inport_definitions = []
     # type: List[rill.engine.portdef.OutputPortDefinition]
@@ -206,6 +208,7 @@ class Component(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
+    # FIXME: make this a function with a include_null option. return a list.
     @property
     def inports(self):
         """
@@ -513,14 +516,13 @@ class Component(with_metaclass(ABCMeta, object)):
         return self.network.globals.get(key)
 
 
-class _FunctionComponent(with_metaclass(ABCMeta, Component)):
+class _FunctionComponent(Component):
     """
     Base class for components created from functions via
     ``rill.decorators.component``
     """
     _pass_context = False
 
-    @abstractmethod
     def _execute(self, *args):
         raise NotImplementedError
 

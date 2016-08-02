@@ -8,8 +8,6 @@ from inspect import isclass
 import time
 import copy
 
-from future.utils import raise_with_traceback
-from past.builtins import basestring
 from typing import Dict, Union, Tuple, Any, Optional
 
 from rill.engine.exceptions import FlowError, NetworkDeadlock
@@ -19,6 +17,7 @@ from rill.engine.status import StatusValues
 from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import Connection, InputPort, InputArray, InitializationConnection
 from rill.engine.types import serialize, deserialize, Stream
+from rill.compat import *
 from rill.engine.utils import CountDownLatch
 
 

@@ -1,8 +1,6 @@
 from abc import ABCMeta
 from collections import OrderedDict
-from rill.utils import abstractclassmethod
 
-from future.utils import with_metaclass
 from typing import Type
 
 from rill.engine.component import Component, inport, outport, logger
@@ -13,6 +11,7 @@ from rill.engine.inputport import InitializationConnection
 from rill.engine.exceptions import FlowError
 from rill.engine.packet import Packet
 from rill.utils import classproperty
+from rill.compat import *
 
 
 def merge_portdefs(exported, inherited):
@@ -181,7 +180,8 @@ class SubOutSS(ExportComponent):
         self.logger.debug("Releasing output port: {}".format(outport))
 
 
-class SubGraph(with_metaclass(ABCMeta, Component)):
+@add_metaclass(ABCMeta)
+class SubGraph(Component):
     """
     A component that defines and executes a sub-graph of components
     """

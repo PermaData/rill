@@ -1,11 +1,11 @@
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict, Counter
 
-from future.utils import with_metaclass, raise_from
 from typing import Any, Union, Iterable, List
 
 from rill.engine.portdef import IN_NULL, OUT_NULL
 from rill.engine.exceptions import FlowError, PacketValidationError
+from rill.compat import *
 
 
 def is_null_port(port):
@@ -34,7 +34,8 @@ def flatten_arrays(ports):
             yield port
 
 
-class PortInterface(with_metaclass(ABCMeta, object)):
+@add_metaclass(ABCMeta)
+class PortInterface(object):
     """
     Enforces an interface for a basic port.
 
@@ -69,7 +70,8 @@ class PortInterface(with_metaclass(ABCMeta, object)):
         raise NotImplementedError
 
 
-class BasePort(with_metaclass(ABCMeta, object)):
+@add_metaclass(ABCMeta)
+class BasePort(object):
     """
     Base class for all ports
     """
@@ -217,7 +219,8 @@ class Port(BasePort):
         raise NotImplementedError
 
 
-class PortContainerMixin(with_metaclass(ABCMeta, object)):
+@add_metaclass(ABCMeta)
+class PortContainerMixin(object):
     """
     Provides functionality common to classes which are containers for ports.
     """
