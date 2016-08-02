@@ -2,6 +2,8 @@ from rill.utils import ProxyAnnotation, FlagAnnotation
 from rill.engine.portdef import InputPortDefinition, OutputPortDefinition
 from rill.compat import *
 
+from typing import Union, Callable, Type
+
 __all__ = ['inport', 'outport', 'must_run', 'self_starting', 'component', 'subnet']
 
 
@@ -92,11 +94,11 @@ def subnet(name_or_func):
 
     Parameters
     ----------
-    name_or_func : str, optional
+    name_or_func : Union[Callable, str]
 
     Returns
     -------
-    subnet : ``rill.engine.subnet.SubGraph`` class
+    subnet : Type[``rill.engine.subnet.SubGraph``]
     """
     from rill.engine.subnet import SubGraph
 
