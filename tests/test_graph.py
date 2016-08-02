@@ -250,13 +250,15 @@ def test_export_serialization():
         'inports': {
             'IN': {
                 'process': 'Head',
-                'port': 'IN'
+                'port': 'IN',
+                'metadata': {}
             }
         },
         'outports': {
             'OUT': {
                 'process': 'Tail',
-                'port': 'OUT'
+                'port': 'OUT',
+                'metadata': {}
             }
         }
     }
@@ -309,13 +311,15 @@ def test_export_of_exports():
         'inports': {
             'IN': {
                 'process': 'Head',
-                'port': 'IN'
+                'port': 'IN',
+                'metadata': {}
             }
         },
         'outports': {
             'OUT': {
                 'process': 'Tail',
-                'port': 'OUT'
+                'port': 'OUT',
+                'metadata': {}
             }
         }
     }

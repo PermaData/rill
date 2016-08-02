@@ -8,6 +8,7 @@ from types import NoneType
 
 import schematics.types
 import schematics.models
+from schematics.undefined import Undefined
 
 from rill.engine.exceptions import TypeHandlerError, PacketValidationError
 from rill.utils import importable_class_name, locate_class
@@ -108,6 +109,8 @@ class TypeHandler(object):
     """
     Base class for validating and serializing content.
     """
+    has_schema = False
+
     def __init__(self, type_def):
         self.type_def = type_def
 
@@ -247,6 +250,7 @@ class BasicTypeHandler(TypeHandler):
 class SchematicsTypeHandler(TypeHandler):
     _type_lookup = {}
     _subtype_lookup = defaultdict(list)
+    has_schema = True
 
     def __init__(self, type_def):
         if isinstance(type_def, schematics.types.BaseType):
@@ -278,15 +282,7 @@ class SchematicsTypeHandler(TypeHandler):
         return type(self.type_def) is schematics.types.BaseType
 
     def get_spec(self):
-        if self.is_any():
-            spec = {'type': 'any'}
-        else:
-            primitive_type = self.type_def.primitive_type
-            spec = {'type': TYPE_MAP[primitive_type]}
-            choices = self.type_def.choices
-            if choices:
-                spec['values'] = [self.to_primitive(c) for c in choices]
-        return spec
+        return to_jsonschema(self.type_def)
 
     def validate(self, value):
         try:
@@ -481,3 +477,99 @@ def _register_builtin_types():
 
 _register_builtin_types()
 register_handler(SchematicsTypeHandler)
+
+# Parameters for serialization to JSONSchema
+schema_kwargs_to_schematics = {
+    'maxLength': 'max_length',
+    'minLength': 'min_length',
+    'pattern': 'regex',
+    'minimum': 'min_value',
+    'maximum': 'max_value',
+    'enum': 'choices',
+}
+
+
+TITLE_METADATA_KEYS = ['title', 'label']
+DESCRIPTION_METADATA_KEYS = ['description', 'help']
+
+
+def _convert_field(field_instance):
+    if isinstance(field_instance, schematics.types.ModelType):
+        # TODO: handle polymorphic models
+        schema = _convert_model(field_instance.model_class)
+
+    elif isinstance(field_instance, schematics.types.ListType):
+        subschema = _convert_model(field_instance.model_class)
+        schema = {
+            'type': 'array',
+            'title': '%s Array' % subschema['title'],
+            'items': subschema
+        }
+        # TODO: min_size -> minItems
+        # TODO: max_size -> maxItems
+
+    elif isinstance(field_instance, schematics.types.BaseType):
+        schema = {
+            "type": TYPE_MAP[getattr(field_instance, 'primitive_type', str)]
+        }
+        # TODO: date-time, email, ipv4, ipv6
+        for js_key, schematic_key in schema_kwargs_to_schematics.items():
+            value = getattr(field_instance, schematic_key, None)
+            if value is not None:
+                schema[js_key] = value
+    else:
+        raise TypeError(field_instance)
+    # TODO: handle UnionType
+
+    default = field_instance.default
+    if default is not Undefined:
+        schema['default'] = default
+
+    metadata = field_instance.metadata
+    if metadata:
+        if 'jsonschema' in metadata:
+            schema.update(metadata['jsonschema'])
+
+        for key in TITLE_METADATA_KEYS:
+            if key in metadata:
+                schema['title'] = metadata[key]
+                break
+        for key in DESCRIPTION_METADATA_KEYS:
+            if key in metadata:
+                schema['desciption'] = metadata[key]
+                break
+
+    return schema
+
+
+def _convert_model(model):
+    properties = collections.OrderedDict()
+    required = []
+    for field_name, field_instance in model._fields.items():
+        serialized_name = getattr(field_instance, 'serialized_name',
+                                  None) or field_name
+        properties[serialized_name] = _convert_field(field_instance)
+        if getattr(field_instance, 'required', False):
+            required.append(serialized_name)
+
+    schema = {
+        'type': 'object',
+        'title': model.__name__,
+        'properties': properties,
+    }
+    # TODO: __doc__ -> description?
+    # TODO: add order if cls._options.export_order?
+    if required:
+        schema['required'] = required
+
+    return schema
+
+
+# FIXME: convert this to use schematics.transforms.export_loop()
+def to_jsonschema(obj):
+    if isinstance(obj, schematics.models.Model):
+        return _convert_model(obj)
+    elif isinstance(obj, schematics.types.BaseType):
+        return _convert_field(obj)
+    else:
+        raise TypeError(obj)

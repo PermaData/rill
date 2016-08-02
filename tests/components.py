@@ -1,5 +1,9 @@
 from rill import *
 from rill.fn import range
+from schematics.models import Model
+from schematics.types import StringType, IntType, ModelType, ListType
+
+from random import random
 
 
 @component(pass_context=True)
@@ -172,3 +176,58 @@ def Repeat(IN, OUT):
     # make it a non-looper - for testing
     p = IN.receive()
     OUT.send(p)
+
+
+class Person(Model):
+    name = StringType(required=True)
+    age = IntType(default=0)
+
+
+class Company(Model):
+    ceo = ModelType(Person)
+    address = StringType()
+
+
+@component(pass_context=True)
+@inport("IN", type=ModelType(Person))
+@outport("OUT")
+def PassthruPerson(self, IN, OUT):
+    """Pass a stream of packets to an output stream"""
+    self.values = []
+    for p in IN.iter_packets():
+        self.values.append(p.get_contents())
+        OUT.send(p)
+
+
+@component(pass_context=True)
+@inport("IN", type=ModelType(Company))
+@outport("OUT")
+def PassthruCompany(self, IN, OUT):
+    """Pass a stream of packets to an output stream"""
+    self.values = []
+    for p in IN.iter_packets():
+        self.values.append(p.get_contents())
+
+
+@component(pass_context=True)
+@inport("IN", type=ListType(ModelType(Person)))
+@outport("OUT")
+def PassthruPeople(self, IN, OUT):
+    """Pass a stream of packets to an output stream"""
+    self.values = []
+    for p in IN.iter_packets():
+        self.values.append(p.get_contents())
+        OUT.send(p)
+        OUT.send(p)
+
+
+@component()
+@inport("COUNT", type=int)
+@outport("OUT", type=float)
+def GenerateRandom(COUNT, OUT):
+    """Generate a stream of random numbers"""
+    count = COUNT.receive_once()
+
+    for i in range(count):
+        OUT.send(random())
+
