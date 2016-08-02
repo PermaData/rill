@@ -25,9 +25,14 @@ class Graph(object):
     """
     A graph of ``Components``
     """
-    def __init__(self, name=None, default_capacity=10):
+    def __init__(
+        self, name=None, default_capacity=10,
+        description=None, metadata=None
+    ):
         self.name = name
         self.default_capacity = default_capacity
+        self.description = None
+        self.metadata = {}
 
         # type: OrderedDict[str, rill.engine.component.Component]
         self._components = OrderedDict()

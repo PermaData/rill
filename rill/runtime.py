@@ -211,7 +211,9 @@ def get_graph_messages(graph, graph_id):
 
     yield ('clear', {
         'id': graph_id,
-        'name': graph.name
+        'name': graph.name,
+        'description': graph.description,
+        'metadata': graph.metadata
     })
 
     def port_msg(p):
@@ -492,12 +494,16 @@ class Runtime(object):
         except KeyError:
             raise RillRuntimeError('Requested graph not found')
 
-    def new_graph(self, graph_id):
+    def new_graph(self, graph_id, description=None, metadata=None):
         """
         Create a new graph.
         """
         self.logger.debug('Graph {}: Initializing'.format(graph_id))
-        self.add_graph(graph_id, Graph())
+        self.add_graph(graph_id, Graph(
+            name=graph_id,
+            description=description,
+            metadata=metadata
+        ))
 
     def add_graph(self, graph_id, graph):
         """
@@ -663,6 +669,30 @@ class Runtime(object):
         """
         graph = self.get_graph(graph_id)
         graph.outport_metadata[public] = metadata
+
+    def change_graph(self, graph_id, description=None, metadata={}):
+        """
+        Change graph attributes
+        """
+
+        graph = self.get_graph(graph_id)
+
+        if description:
+            graph.description = description
+
+        if metadata:
+            graph.metadata.update(metadata)
+
+    def rename_graph(self, old_id, new_id):
+        """
+        Change graph name
+        """
+
+        graph = self.get_graph(old_id)
+        graph.name = new_id
+
+        del self._graphs[old_id]
+        self._graphs[new_id] = graph
 
 
 clients = {}
@@ -895,7 +925,11 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         try:
             # New graph
             if command == 'clear':
-                self.runtime.new_graph(payload['id'])
+                self.runtime.new_graph(
+                    payload['id'],
+                    payload.get('description', None),
+                    payload.get('metadata', None)
+                )
             # Nodes
             elif command == 'addnode':
                 self.runtime.add_node(get_graph(), payload['id'],
@@ -978,6 +1012,18 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
                     })
 
                 self.send('graph', 'graphsdone', None)
+
+            elif command == 'changegraph':
+                send_ack = True
+                self.runtime.change_graph(
+                    get_graph(),
+                    payload.get('description', None),
+                    payload.get('metadata', None)
+                )
+
+            elif command == 'renamegraph':
+                send_ack = True
+                self.runtime.rename_graph(payload['from'], payload['to'])
 
             else:
                 self.logger.warn("Unknown command '%s' for protocol '%s'" %
