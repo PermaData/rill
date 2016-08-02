@@ -89,8 +89,8 @@ def get_type_handler(type_def):
     -------
     ``TypeHandler``
     """
-    # if type_def is None:
-    #     UnspecifiedTypeHandler(type_def)
+    if type_def is None:
+        return UnspecifiedTypeHandler(type_def)
 
     for cls in _type_handlers:
         if cls.claim_type_def(type_def):
@@ -110,10 +110,6 @@ class TypeHandler(object):
     """
     def __init__(self, type_def):
         self.type_def = type_def
-
-    @abstractmethod
-    def is_any(self):
-        raise NotImplementedError
 
     @abstractmethod
     def get_spec(self):
@@ -196,12 +192,10 @@ class UnspecifiedTypeHandler(TypeHandler):
         return value
 
     def to_primitive(self, data):
-        # this is assumed to be json-serializable
-        return data
+        return serialize(data)
 
     def to_native(self, data):
-        # this is assumed to be json-deserializable
-        return data
+        return deserialize(data)
 
     @classmethod
     def claim_type_def(cls, type_def):
@@ -258,16 +252,18 @@ class SchematicsTypeHandler(TypeHandler):
         if isinstance(type_def, schematics.types.BaseType):
             # nothing to do
             pass
-        elif isinstance(type_def, schematics.models.Model):
+        elif inspect.isclass(type_def) \
+                and issubclass(type_def, schematics.models.Model):
             # for convenience we allow models to omit the ModelType wrapper
+            # e.g. type=MyModel   vs  type=ModelType(MyModel)
             type_def = schematics.types.ModelType(type_def)
         elif inspect.isclass(type_def) \
                 and issubclass(type_def, schematics.types.BaseType):
             # for convenience we allow type classes to be passed without
-            # instantiation:  e.g. type=StringType
+            # instantiation:  e.g. type=StringType vs  type=StringType()
             type_def = type_def()
         else:
-            # handle type=str, type=int, etc
+            # handle e.g.  type=str, type=int, etc
             result = self.claim_type(type_def)
             if result is not None:
                 type_def = result
@@ -310,7 +306,7 @@ class SchematicsTypeHandler(TypeHandler):
     @staticmethod
     def is_schematics_obj(obj):
         bases = (schematics.types.BaseType, schematics.models.Model)
-        return (isinstance(obj, bases) or
+        return (isinstance(obj, schematics.types.BaseType) or
                 (inspect.isclass(obj) and issubclass(obj, bases)))
 
     @classmethod
@@ -385,11 +381,13 @@ class SchematicsTypeHandler(TypeHandler):
 def serialize(obj):
     if isinstance(obj, collections.Mapping):
         newobj = collections.OrderedDict()
-        for key, value in obj.iteritems():
+        for key, value in obj.items():
             newobj[key] = serialize(value)
         return newobj
-    elif isinstance(obj, (list, tuple)):
+    elif type(obj) in (list, tuple):
         return [serialize(x) for x in obj]
+    elif obj is None:
+        return None
     else:
         obj_type = type(obj)
         handler = get_type_handler(obj_type)
@@ -414,7 +412,7 @@ def deserialize(data):
             for key, value in data.iteritems():
                 newobj[key] = deserialize(value)
             return newobj
-    elif isinstance(data, (list, tuple)):
+    elif type(data) in (list, tuple):
         return [deserialize(x) for x in data]
     else:
         # native json type
@@ -457,17 +455,20 @@ def _register_builtin_types():
                                         schematics.types.BooleanType)
     SchematicsTypeHandler.register_type(float,
                                         schematics.types.FloatType)
-    SchematicsTypeHandler.register_type(basestring,
-                                        schematics.types.StringType,
-                                        allow_subclasses=True)
+    SchematicsTypeHandler.register_type(str,
+                                        schematics.types.StringType)
+    SchematicsTypeHandler.register_type(bytes,
+                                        schematics.types.StringType)
     SchematicsTypeHandler.register_type(decimal.Decimal,
                                         schematics.types.DecimalType)
     SchematicsTypeHandler.register_type(datetime.datetime,
                                         schematics.types.DateTimeType)
     SchematicsTypeHandler.register_type(datetime.date,
                                         schematics.types.DateType)
-    SchematicsTypeHandler.register_type(NoneType,
-                                        schematics.types.BaseType)
+    # FIXME: create a schematics NoneType?
+    # SchematicsTypeHandler.register_type(NoneType,
+    #                                     schematics.types.BaseType)
+
     # compound types
 
     SchematicsTypeHandler.register_type(list,

@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 import inspect
 import itertools
-import types
 
 from rill.utils import NOT_SET
 
@@ -18,7 +17,7 @@ class PortDefinition(object):
     __slots__ = ('array', 'name', 'type', 'required', 'description',
                  'fixed_size')
 
-    def __init__(self, name, type=types.NoneType, array=False, fixed_size=None,
+    def __init__(self, name, type=None, array=False, fixed_size=None,
                  description='', required=False):
         from rill.engine.types import get_type_handler
         self.array = array
@@ -103,7 +102,7 @@ class InputPortDefinition(PortDefinition):
     kind = 'in'
     __slots__ = ('static', 'default')
 
-    def __init__(self, name, type=types.NoneType, array=False, fixed_size=None,
+    def __init__(self, name, type=None, array=False, fixed_size=None,
                  description='', required=False, static=False, default=NOT_SET):
         super(InputPortDefinition, self).__init__(
             name, type=type, array=array, fixed_size=fixed_size,
