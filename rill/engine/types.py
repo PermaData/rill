@@ -499,12 +499,14 @@ def _convert_field(field_instance):
         schema = _convert_model(field_instance.model_class)
 
     elif isinstance(field_instance, schematics.types.ListType):
-        subschema = _convert_model(field_instance.model_class)
+        subschema = to_jsonschema(field_instance.field)
         schema = {
             'type': 'array',
-            'title': '%s Array' % subschema['title'],
             'items': subschema
         }
+        if 'title' in subschema:
+            schema['title'] = '%s Array' % subschema['title']
+
         # TODO: min_size -> minItems
         # TODO: max_size -> maxItems
 
@@ -519,7 +521,8 @@ def _convert_field(field_instance):
                 schema[js_key] = value
     else:
         raise TypeError(field_instance)
-    # TODO: handle UnionType
+    # TODO: UnionType
+    # TODO: DictType
 
     default = field_instance.default
     if default is not Undefined:
@@ -567,7 +570,7 @@ def _convert_model(model):
 
 # FIXME: convert this to use schematics.transforms.export_loop()
 def to_jsonschema(obj):
-    if isinstance(obj, schematics.models.Model):
+    if inspect.isclass(obj) and issubclass(obj, schematics.models.Model):
         return _convert_model(obj)
     elif isinstance(obj, schematics.types.BaseType):
         return _convert_field(obj)
