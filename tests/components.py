@@ -181,7 +181,7 @@ def Repeat(IN, OUT):
 
 class Person(Model):
     name = StringType(required=True)
-    age = IntType(default=0)
+    age = IntType(default=0, min_value=0, max_value=200)
     favorite_color = StringType(choices=[
         'cyan',
         'magenta',

@@ -22,7 +22,12 @@ def test_schematics_port():
             'type': 'object',
             'properties': OrderedDict([
                 ('name', {'type': 'string'}),
-                ('age', {'default': 0, 'type': 'int'}),
+                ('age', {
+                    'default': 0,
+                    'type': 'int',
+                    'minimum': 0,
+                    'maximum': 200
+                }),
                 ('favorite_color', {
                     'enum': ['cyan', 'magenta', 'chartreuse'],
                     'type': 'string'
@@ -51,7 +56,12 @@ def test_to_jsonschema():
                 'type': 'object',
                 'properties': OrderedDict([
                     ('name', {'type': 'string'}),
-                    ('age', {'default': 0, 'type': 'int'}),
+                    ('age', {
+                        'default': 0,
+                        'type': 'int',
+                        'minimum': 0,
+                        'maximum': 200
+                    }),
                     ('favorite_color', {
                         'enum': ['cyan', 'magenta', 'chartreuse'],
                         'type': 'string'
@@ -74,7 +84,12 @@ def test_to_jsonschema():
                     'type': 'object',
                     'properties': OrderedDict([
                         ('name', {'type': 'string'}),
-                        ('age', {'default': 0, 'type': 'int'}),
+                        ('age', {
+                            'default': 0,
+                            'type': 'int',
+                            'minimum': 0,
+                            'maximum': 200
+                        }),
                         ('favorite_color', {
                             'enum': ['cyan', 'magenta', 'chartreuse'],
                             'type': 'string'
