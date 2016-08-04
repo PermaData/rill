@@ -23,69 +23,6 @@ from rill.utils.observer import supports_listeners
 from rill.engine.utils import CountDownLatch
 
 
-# FIXME: we should be able to get the comp_name from the port
-def fbp_portdef(comp_name, port):
-    """
-    Get a Flowbase Protocol compoatible port definition
-
-    Parameters
-    ----------
-    comp_name : str
-    port: BasePort
-
-    Returns
-    -------
-    dict
-    """
-    doc = {
-        'process': comp_name,
-        # FIXME: it should be easier to get this value from BasePort
-        'port': port._name if port.is_element() else port.name
-    }
-    if port.is_element():
-        doc['index'] = port.index
-    return doc
-
-
-# FIXME: we should be able to get the comp_name from the port
-def fbp_edge(comp_name, outport, inport):
-    if outport.component.hidden:
-        return
-
-    sender = outport.component
-    connection = {
-        'src': fbp_portdef(sender.get_name(), outport),
-        'tgt': fbp_portdef(comp_name, inport)
-    }
-    conn = inport._connection
-    # keyed on outport
-    metadata = conn.metadata.get(outport, None)
-    if metadata:
-        connection['metadata'] = metadata
-    return connection
-
-
-def fbp_iip(comp_name, inport):
-    conn = inport._connection
-    content = conn._content
-    # FIXME: we need to determine the most reliable way to
-    # serialize `content`.
-    # - inport.type is only good when type is not "any".
-    # - serialize() must store extra info about rich types,
-    #   which could confuse a client
-    # - another option is to store the type on the Packet
-    # content = inport.type.to_primitive(content)
-    if inport.auto_receive:
-        content = content[0]
-    connection = {
-        'src': {'data': serialize(content)},
-        'tgt': fbp_portdef(comp_name, inport)
-    }
-    if conn.metadata:
-        connection['metadata'] = conn.metadata
-    return connection
-
-
 class Graph(object):
     """
     A graph of ``Components``
@@ -250,6 +187,7 @@ class Graph(object):
             if outport.is_connected():
                 self.disconnect(outport._connection.inport, outport)
         # FIXME: remove references in self.inports and self.outports
+        self.remove_component.event.emit(component)
 
     @supports_listeners
     def rename_component(self, orig_name, new_name):
@@ -514,6 +452,7 @@ class Graph(object):
             json-serializable representation of graph according to fbp json
             standard
         """
+        from rill.events.listeners.memory import fbp_iip, fbp_edge
 
         definition = {
             'processes': {},
@@ -536,14 +475,14 @@ class Graph(object):
 
                 conn = inport._connection
                 if isinstance(conn, InitializationConnection):
-                    connection = fbp_iip(comp_name, inport)
-                    if connection is not None:
-                        definition['connections'].append(connection)
+                    definition['connections'].append(
+                        fbp_iip(inport))
                 else:
                     for outport in conn.outports:
-                        connection = fbp_edge(comp_name, outport, inport)
-                        if connection is not None:
-                            definition['connections'].append(connection)
+                        if outport.component.hidden:
+                            continue
+                        definition['connections'].append(
+                            fbp_edge(outport, inport))
 
         for (name, inport) in self.inports.items():
             definition['inports'][name] = {

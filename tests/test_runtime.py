@@ -1,5 +1,6 @@
 from rill.engine.runner import ComponentRunner
-from rill.runtime import Runtime, get_graph_messages
+from rill.runtime import Runtime
+from rill.events.listeners.memory import get_graph_messages
 from rill.engine.network import Graph
 
 from tests.components import *

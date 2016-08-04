@@ -21,7 +21,8 @@ from rill.engine.network import Graph, Network
 from rill.engine.subnet import SubGraph, make_subgraph
 from rill.engine.exceptions import FlowError
 from rill.events.dispatchers.memory import InMemoryGraphDispatcher
-from rill.events.listeners.base import GraphHandler
+from rill.events.listeners.base import GraphListener
+from rill.events.listeners.memory import get_graph_messages
 from rill.compat import *
 
 from typing import Union, Any, Iterator, Dict
@@ -191,72 +192,6 @@ def init():
     if not _initialized:
         _import_component_modules()
     _initialized = True
-
-
-def get_graph_messages(graph, graph_id):
-    """
-    Create graph protocol messages to build graph for receiver
-
-    Params
-    ------
-    graph : ``rill.engine.network.Graph``
-    graph_id : str
-        id of graph to serialize
-
-    Returns
-    -------
-    Iterator[Dict[str, Any]]
-        graph protocol messages that reproduce graph
-    """
-    definition = graph.to_dict()
-
-    yield ('clear', {
-        'id': graph_id,
-        'name': graph.name
-    })
-
-    def port_msg(p):
-        p['node'] = p.pop('process')
-
-    for node_id, node in definition['processes'].items():
-        payload = {
-            'graph': graph_id,
-            'id': node_id
-        }
-        payload.update(node)
-        yield ('addnode', payload)
-    for edge in definition['connections']:
-        payload = {
-            'graph': graph_id
-        }
-        port_msg(edge['tgt'])
-        if 'data' in edge['src']:
-            command = 'addinitial'
-        else:
-            port_msg(edge['src'])
-            command = 'addedge'
-
-        payload.update(edge)
-
-        yield (command, payload)
-
-    for public_port, inner_port in definition['inports'].items():
-        yield ('addinport', {
-            'graph': graph_id,
-            'public': public_port,
-            'node': inner_port['process'],
-            'port': inner_port['port'],
-            'metadata': inner_port['metadata']
-        })
-
-    for public_port, inner_port in definition['outports'].items():
-        yield ('addoutport', {
-            'graph': graph_id,
-            'public': public_port,
-            'node': inner_port['process'],
-            'port': inner_port['port'],
-            'metadata': inner_port['metadata']
-        })
 
 
 class Runtime(InMemoryGraphDispatcher):
@@ -501,11 +436,10 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         self.logger = logging.getLogger('{}.{}'.format(
             self.__class__.__module__, self.__class__.__name__))
         self.runtime = self.runtimes[int(ws.environ['SERVER_PORT'])]
-        self.graph_handler = GraphHandler([self.runtime])
+        self.graph_handler = GraphListener([self.runtime])
         self.client_id = None
 
-        # FIXME: move to on_open?
-        # insert a listener
+        # FIXME: use @support_listeners and move to InMemoryNetworkListener?
         Connection.send = add_callback(Connection.send,
                                        self.send_connection_data)
 
@@ -597,6 +531,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         }
         self.send(protocol, 'error', data)
 
+    # FIXME: move to InMemoryNetworkListener?
     def send_connection_data(self, connection, packet, outport):
         """
         Setup as a callback for ``rill.engine.inputport.Connection.send``
@@ -711,11 +646,20 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
                 graph_id = payload['id']
                 try:
                     graph = self.runtime.get_graph(graph_id)
+                    # FIXME: treat this like subscribing to a graph.
+                    # - get rid of the ack messages below. they will be
+                    # handled by the listener+sdispatcher.
+                    # - need to figure out how to remove the listener when
+                    # the graph is deleted. weakref?
+                    # listener = InMemoryGraphListener(graph, [
+                    #     SocketGraphDispatcher(self)])
+                    # self.subscriptions.append(listener)
+                    # listener.snapshot()
                     graph_messages = get_graph_messages(
                         graph, graph_id)
                     for command, payload in graph_messages:
                         self.send('graph', command, payload)
-                except RillRuntimeError as ex:
+                except FlowError as ex:
                     self.runtime.new_graph(graph_id)
 
             elif command == 'list':

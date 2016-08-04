@@ -2,7 +2,11 @@ from rill.engine.exceptions import FlowError
 
 # FIXME: this is still a work in progress. need to determine how much
 
-class GraphHandler(object):
+class GraphListener(object):
+    """
+    Simple passtrhough base class, mapping FBP graph sub-commands to
+    dispatcher methods.
+    """
     GRAPH_COMMAND_TO_METHOD = {
         'clear': 'new_graph',
         # Nodes
