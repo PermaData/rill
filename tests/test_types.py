@@ -1,3 +1,4 @@
+import re
 from collections import OrderedDict
 from tests.components import Person, Company, PassthruPerson
 from rill.engine.jsonschema_types import to_jsonschema
@@ -21,7 +22,17 @@ def test_schematics_port():
             'type': 'object',
             'properties': OrderedDict([
                 ('name', {'type': 'string'}),
-                ('age', {'default': 0, 'type': 'int'})
+                ('age', {'default': 0, 'type': 'int'}),
+                ('favorite_color', {
+                    'enum': ['cyan', 'magenta', 'chartreuse'],
+                    'type': 'string'
+                }),
+                ('phone_number', {
+                    'type': 'string',
+                    'maxLength': 8,
+                    'minLength': 8,
+                    'pattern': re.compile(r'\d{3}-\d{4}')
+                })
             ]),
             'title': 'Person'
         },
@@ -40,10 +51,44 @@ def test_to_jsonschema():
                 'type': 'object',
                 'properties': OrderedDict([
                     ('name', {'type': 'string'}),
-                    ('age', {'default': 0, 'type': 'int'})
+                    ('age', {'default': 0, 'type': 'int'}),
+                    ('favorite_color', {
+                        'enum': ['cyan', 'magenta', 'chartreuse'],
+                        'type': 'string'
+                    }),
+                    ('phone_number', {
+                        'type': 'string',
+                        'maxLength': 8,
+                        'minLength': 8,
+                        'pattern': re.compile(r'\d{3}-\d{4}')
+                    })
                 ]),
-                'title': 'Person'}),
-            ('address', {'type': 'string'})
+                'title': 'Person'
+            }),
+            ('address', {'type': 'string'}),
+            ('employees', {
+                'type': 'array',
+                'title': 'Person Array',
+                'items': {
+                    'required': ['name'],
+                    'type': 'object',
+                    'properties': OrderedDict([
+                        ('name', {'type': 'string'}),
+                        ('age', {'default': 0, 'type': 'int'}),
+                        ('favorite_color', {
+                            'enum': ['cyan', 'magenta', 'chartreuse'],
+                            'type': 'string'
+                        }),
+                        ('phone_number', {
+                            'type': 'string',
+                            'maxLength': 8,
+                            'minLength': 8,
+                            'pattern': re.compile(r'\d{3}-\d{4}')
+                        })
+                    ]),
+                    'title': 'Person'
+                }
+            })
         ]),
         'title': 'Company'
     }

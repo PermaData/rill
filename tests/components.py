@@ -1,3 +1,4 @@
+import re
 from rill import *
 from rill.fn import range
 from schematics.models import Model
@@ -181,11 +182,22 @@ def Repeat(IN, OUT):
 class Person(Model):
     name = StringType(required=True)
     age = IntType(default=0)
+    favorite_color = StringType(choices=[
+        'cyan',
+        'magenta',
+        'chartreuse'
+    ])
+    phone_number = StringType(
+        regex=re.compile(r'\d{3}-\d{4}'),
+        max_length=8,
+        min_length=8
+    )
 
 
 class Company(Model):
     ceo = ModelType(Person)
     address = StringType()
+    employees = ListType(ModelType(Person))
 
 
 @component(pass_context=True)
