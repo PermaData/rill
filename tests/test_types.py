@@ -1,5 +1,7 @@
 from collections import OrderedDict
-from tests.components import PassthruPerson
+from tests.components import Person, Company, PassthruPerson
+from rill.engine.jsonschema_types import to_jsonschema
+
 
 def test_schematics_port():
     spec = PassthruPerson.get_spec()
@@ -27,3 +29,24 @@ def test_schematics_port():
         'id': 'IN',
         'description': ''
     } in inports
+
+
+def test_to_jsonschema():
+    expected = {
+        'type': 'object',
+        'properties': OrderedDict([
+            ('ceo', {
+                'required': ['name'],
+                'type': 'object',
+                'properties': OrderedDict([
+                    ('name', {'type': 'string'}),
+                    ('age', {'default': 0, 'type': 'int'})
+                ]),
+                'title': 'Person'}),
+            ('address', {'type': 'string'})
+        ]),
+        'title': 'Company'
+    }
+
+    schema = to_jsonschema(Company)
+    assert schema == expected

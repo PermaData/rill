@@ -176,14 +176,15 @@ def test_component_spec():
                 'description': '',
                 'id': 'wait',
                 'required': False,
-                'type': 'bang'},
+                'type': 'bang'
+            },
             {
                 'addressable': False,
                 'default': 1,
                 'description': 'Count of packets to be generated',
                 'id': 'COUNT',
                 'required': False,
-                'type': 'int'
+                'schema': {'type': 'int'}
             }
         ],
         'outPorts': [
@@ -192,13 +193,14 @@ def test_component_spec():
                 'description': '',
                 'id': 'done',
                 'required': False,
-                'type': 'bang'},
+                'type': 'bang'
+            },
             {
                 'addressable': False,
                 'description': 'Generated stream',
                 'id': 'OUT',
                 'required': False,
-                'type': 'string'
+                'schema': {'type': 'string'}
             }
         ],
         'subgraph': False
