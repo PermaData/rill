@@ -1,4 +1,4 @@
-from rill.utils import ProxyAnnotation, FlagAnnotation
+from rill.utils.annotations import ProxyAnnotation, FlagAnnotation
 from rill.engine.portdef import InputPortDefinition, OutputPortDefinition
 from rill.compat import *
 

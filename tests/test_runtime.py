@@ -34,10 +34,9 @@ def test_get_graph_messages():
     graph_id = 'graph1'
     graph_name = 'My Graph'
     runtime = Runtime()
-    runtime.new_graph(graph_id)
 
     graph, gen, passthru, outside = get_graph(graph_name)
-    runtime.add_graph(graph_id, graph)
+    runtime._add_graph(graph_id, graph)
 
     messages = list(get_graph_messages(runtime.get_graph(graph_id), graph_id))
 

@@ -19,8 +19,9 @@ from rill.engine.inputport import Connection
 from rill.engine.outputport import OutputPort
 from rill.engine.network import Graph, Network
 from rill.engine.subnet import SubGraph, make_subgraph
-from rill.engine.types import FBP_TYPES
 from rill.engine.exceptions import FlowError
+from rill.events.dispatchers.memory import InMemoryGraphDispatcher
+from rill.events.listeners.base import GraphHandler
 from rill.compat import *
 
 from typing import Union, Any, Iterator, Dict
@@ -258,7 +259,7 @@ def get_graph_messages(graph, graph_id):
         })
 
 
-class Runtime(object):
+class Runtime(InMemoryGraphDispatcher):
     """
     Rill runtime for python
 
@@ -268,12 +269,11 @@ class Runtime(object):
     PROTOCOL_VERSION = '0.5'
 
     def __init__(self):
+        super(Runtime, self).__init__()
         self.logger = logging.getLogger('%s.%s' % (self.__class__.__module__,
                                                    self.__class__.__name__))
 
         self._component_types = {}  # Component metadata, keyed by component name
-        # type: Dict[str, Graph]
-        self._graphs = {}  # Graph instances, keyed by graph ID
         # type: Dict[str, Tuple[Greenlet, Network]]
         self._executors = {}  # GraphExecutor instances, keyed by graph ID
 
@@ -321,6 +321,15 @@ class Runtime(object):
             'allCapabilities': all_capabilities
         }
 
+    def add_graph(self, graph_id, graph):
+        """
+        Parameters
+        ----------
+        graph_id : str
+        graph : ``rill.engine.network.Graph``
+        """
+        self._graphs[graph_id] = graph
+
     # Components --
 
     def get_subnet_component(self, graph_id):
@@ -358,7 +367,12 @@ class Runtime(object):
             raise ValueError('component_class must be a class that inherits '
                              'from Component')
 
-        spec = component_class.get_spec()
+        try:
+            spec = component_class.get_spec()
+        except Exception:
+            self.logger.error("Failed to get spec for "
+                              "component {}".format(component_class))
+            raise
         name = spec['name']
 
         if name in self._component_types and not overwrite:
@@ -467,203 +481,6 @@ class Runtime(object):
         # self.get_graph(graph_id).debug = debug
         pass
 
-    # Graphs --
-
-    @staticmethod
-    def _get_port(graph, data, kind):
-        return graph.get_component_port((data['node'], data['port']),
-                                        index=data.get('index'),
-                                        kind=kind)
-
-    def get_graph(self, graph_id):
-        """
-        Parameters
-        ----------
-        graph_id : str
-            unique identifier for the graph to create or get
-
-        Returns
-        -------
-        graph : ``rill.engine.network.Graph``
-            the graph object.
-        """
-        try:
-            return self._graphs[graph_id]
-        except KeyError:
-            raise RillRuntimeError('Requested graph not found')
-
-    def new_graph(self, graph_id):
-        """
-        Create a new graph.
-        """
-        self.logger.debug('Graph {}: Initializing'.format(graph_id))
-        self.add_graph(graph_id, Graph())
-
-    def add_graph(self, graph_id, graph):
-        """
-        Parameters
-        ----------
-        graph_id : str
-        graph : ``rill.engine.network.Graph``
-        """
-        self._graphs[graph_id] = graph
-
-    def add_node(self, graph_id, node_id, component_id, metadata):
-        """
-        Add a component instance.
-        """
-        self.logger.debug('Graph {}: Adding node {}({})'.format(
-            graph_id, component_id, node_id))
-
-        graph = self.get_graph(graph_id)
-
-        component_class = self._component_types[component_id]['class']
-        component = graph.add_component(node_id, component_class)
-        component.metadata.update(metadata)
-
-    def remove_node(self, graph_id, node_id):
-        """
-        Destroy component instance.
-        """
-        self.logger.debug('Graph {}: Removing node {}'.format(
-            graph_id, node_id))
-
-        graph = self.get_graph(graph_id)
-        graph.remove_component(node_id)
-
-    def rename_node(self, graph_id, orig_node_id, new_node_id):
-        """
-        Rename component instance.
-        """
-        self.logger.debug('Graph {}: Renaming node {} to {}'.format(
-            graph_id, orig_node_id, new_node_id))
-
-        graph = self.get_graph(graph_id)
-        graph.rename_component(orig_node_id, new_node_id)
-
-    def set_node_metadata(self, graph_id, node_id, metadata):
-        graph = self.get_graph(graph_id)
-        component = graph.component(node_id)
-        for key, value in metadata.items():
-            if value is None:
-                metadata.pop(key)
-                component.metadata.pop(key, None)
-        component.metadata.update(metadata)
-        return component.metadata
-
-    def add_edge(self, graph_id, src, tgt, metadata):
-        """
-        Connect ports between components.
-        """
-        self.logger.debug('Graph {}: Connecting ports: {} -> {}'.format(
-            graph_id, src, tgt))
-
-        graph = self.get_graph(graph_id)
-        outport = self._get_port(graph, src, kind='out')
-        inport = self._get_port(graph, tgt, kind='in')
-        graph.connect(outport, inport)
-
-        edge_metadata = inport._connection.metadata.setdefault(outport, {})
-        metadata.setdefault('route', FBP_TYPES[inport.type.get_spec()['type']]['color_id'])
-        edge_metadata.update(metadata)
-
-        return edge_metadata
-
-    def remove_edge(self, graph_id, src, tgt):
-        """
-        Disconnect ports between components.
-        """
-        self.logger.debug('Graph {}: Disconnecting ports: {} -> {}'.format(
-            graph_id, src, tgt))
-
-        graph = self.get_graph(graph_id)
-        graph.disconnect(self._get_port(graph, src, kind='out'),
-                         self._get_port(graph, tgt, kind='in'))
-
-    def set_edge_metadata(self, graph_id, src, tgt, metadata):
-        graph = self.get_graph(graph_id)
-        outport = self._get_port(graph, src, kind='out')
-        inport = self._get_port(graph, tgt, kind='in')
-        edge_metadata = inport._connection.metadata.setdefault(outport, {})
-
-        for key, value in metadata.items():
-            if value is None:
-                metadata.pop(key)
-                edge_metadata.pop(key, None)
-        edge_metadata.update(metadata)
-        return edge_metadata
-
-    def initialize_port(self, graph_id, tgt, data):
-        """
-        Set the inital packet for a component inport.
-        """
-        self.logger.info('Graph {}: Setting IIP to {!r} on port {}'.format(
-            graph_id, data, tgt))
-
-        # FIXME: noflo-ui is sending an 'addinitial foo.IN []' even when
-        # the inport is connected
-        if data == []:
-            return
-
-        graph = self.get_graph(graph_id)
-
-        target_port = self._get_port(graph, tgt, kind='in')
-        # if target_port.is_connected():
-        #     graph.disconnect(target_port)
-
-        # FIXME: handle deserialization?
-        graph.initialize(data, target_port)
-
-    def uninitialize_port(self, graph_id, tgt):
-        """
-        Remove the initial packet for a component inport.
-        """
-        self.logger.debug('Graph {}: Removing IIP from port {}'.format(
-            graph_id, tgt))
-
-        graph = self.get_graph(graph_id)
-
-        target_port = self._get_port(graph, tgt, kind='in')
-        if target_port.is_initialized():
-            # FIXME: so far the case where an uninitialized port receives a uninitialize_port
-            # message is when noflo initializes the inport to [] (see initialize_port as well)
-            return graph.uninitialize(target_port)._content
-
-    def add_export(self, graph_id, node, port, public, metadata={}):
-        """
-        Add inport or outport to graph
-        """
-        graph = self.get_graph(graph_id)
-        graph.export("{}.{}".format(node, port), public, metadata)
-
-    def remove_inport(self, graph_id, public):
-        """
-        Remove inport from graph
-        """
-        graph = self.get_graph(graph_id)
-        graph.remove_inport(public)
-
-    def remove_outport(self, graph_id, public):
-        """
-        Remove outport from graph
-        """
-        graph = self.get_graph(graph_id)
-        graph.remove_outport(public)
-
-    def change_inport(self, graph_id, public, metadata):
-        """
-        Change inport metadata
-        """
-        graph = self.get_graph(graph_id)
-        graph.inport_metadata[public] = metadata
-
-    def change_outport(self, graph_id, public, metadata):
-        """
-        Change inport metadata
-        """
-        graph = self.get_graph(graph_id)
-        graph.outport_metadata[public] = metadata
-
 
 clients = {}
 class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
@@ -684,6 +501,8 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         self.logger = logging.getLogger('{}.{}'.format(
             self.__class__.__module__, self.__class__.__name__))
         self.runtime = self.runtimes[int(ws.environ['SERVER_PORT'])]
+        self.graph_handler = GraphHandler([self.runtime])
+        self.client_id = None
 
         # FIXME: move to on_open?
         # insert a listener
@@ -878,14 +697,8 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
 
         send_ack = True
 
-        def get_graph():
-            try:
-                return payload['graph']
-            except KeyError:
-                raise RillRuntimeError('No graph specified')
-
-        def update_subnet(graph_id):
-            spec = self.runtime.register_subnet(graph_id)
+        def update_subnet():
+            spec = self.runtime.register_subnet(payload['graph_id'])
             self.send(
                 'component',
                 'component',
@@ -893,72 +706,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
             )
 
         try:
-            # New graph
-            if command == 'clear':
-                self.runtime.new_graph(payload['id'])
-            # Nodes
-            elif command == 'addnode':
-                self.runtime.add_node(get_graph(), payload['id'],
-                                      payload['component'],
-                                      payload.get('metadata', {}))
-            elif command == 'removenode':
-                self.runtime.remove_node(get_graph(), payload['id'])
-            elif command == 'renamenode':
-                self.runtime.rename_node(get_graph(), payload['from'],
-                                         payload['to'])
-            # Edges/connections
-            elif command == 'addedge':
-                metadata = self.runtime.add_edge(get_graph(), payload['src'],
-                                                 payload['tgt'],
-                                                 payload.get('metadata', {}))
-                # send an immedate followup to set the color based on type
-                send_ack = True
-                payload['metadata'] = metadata
-                self.send('graph', command, payload)
-                self.send('graph', 'changeedge', payload)
-            elif command == 'removeedge':
-                self.runtime.remove_edge(get_graph(), payload['src'],
-                                         payload['tgt'])
-            # IIP / literals
-            elif command == 'addinitial':
-                self.runtime.initialize_port(get_graph(), payload['tgt'],
-                                             payload['src']['data'])
-            elif command == 'removeinitial':
-                iip = self.runtime.uninitialize_port(get_graph(),
-                                                     payload['tgt'])
-                payload['src'] = {'data': iip}
-                # FIXME: hard-wiring metdata here to pass fbp-test
-                payload['metadata'] = {}
-            # Exported ports
-            elif command in ('addinport', 'addoutport'):
-                self.runtime.add_export(get_graph(), payload['node'],
-                                        payload['port'], payload['public'], payload['metadata'])
-                update_subnet(get_graph())
-            elif command == 'removeinport':
-                self.runtime.remove_inport(get_graph(), payload['public'])
-                update_subnet(get_graph())
-            elif command == 'removeoutport':
-                self.runtime.remove_outport(get_graph(), payload['public'])
-                update_subnet(get_graph())
-            elif command == 'changeinport':
-                self.runtime.change_inport(
-                    get_graph(), payload['public'], payload['metadata'])
-            elif command == 'changeoutport':
-                self.runtime.change_outport(
-                    get_graph(), payload['public'], payload['metadata'])
-            # Metadata changes
-            elif command == 'changenode':
-                metadata = self.runtime.set_node_metadata(get_graph(),
-                                                          payload['id'],
-                                                          payload['metadata'])
-                payload['metadata'] = metadata
-            elif command == 'changeedge':
-                metadata = self.runtime.set_edge_metadata(get_graph(),
-                                                          payload['src'],
-                                                          payload['tgt'],
-                                                          payload['metadata'])
-                payload['metadata'] = metadata
-            elif command == 'getgraph':
+            if command == 'getgraph':
                 send_ack = False
                 graph_id = payload['id']
                 try:
@@ -980,9 +728,11 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
                 self.send('graph', 'graphsdone', None)
 
             else:
-                self.logger.warn("Unknown command '%s' for protocol '%s'" %
-                                 (command, 'graph'))
-                return
+                self.graph_handler.handle(command, payload)
+                if command in ('addinport', 'addoutport', 'removeinport',
+                               'removeoutport'):
+                    update_subnet()
+
         except FlowError as ex:
             self.send_error('graph', str(ex))
 
@@ -1020,7 +770,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
                 for client_id, client in clients.items():
                     if client_id != self.client_id:
                         client.send('network', cmd, data)
-            # FIXME: hook up component logger to and output handler
+            # FIXME: hook up component logger to an output handler
             # self.send('network', 'output', {'message': 'TEST!'})
             # if started and running:
             #     payload = {u'component': u'tests.components/GenerateTestData',

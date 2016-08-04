@@ -18,7 +18,72 @@ from rill.engine.outputport import OutputPort, OutputArray
 from rill.engine.inputport import Connection, InputPort, InputArray, InitializationConnection
 from rill.engine.types import serialize, deserialize, Stream
 from rill.compat import *
+from rill.utils.observer import supports_listeners
+
 from rill.engine.utils import CountDownLatch
+
+
+# FIXME: we should be able to get the comp_name from the port
+def fbp_portdef(comp_name, port):
+    """
+    Get a Flowbase Protocol compoatible port definition
+
+    Parameters
+    ----------
+    comp_name : str
+    port: BasePort
+
+    Returns
+    -------
+    dict
+    """
+    doc = {
+        'process': comp_name,
+        # FIXME: it should be easier to get this value from BasePort
+        'port': port._name if port.is_element() else port.name
+    }
+    if port.is_element():
+        doc['index'] = port.index
+    return doc
+
+
+# FIXME: we should be able to get the comp_name from the port
+def fbp_edge(comp_name, outport, inport):
+    if outport.component.hidden:
+        return
+
+    sender = outport.component
+    connection = {
+        'src': fbp_portdef(sender.get_name(), outport),
+        'tgt': fbp_portdef(comp_name, inport)
+    }
+    conn = inport._connection
+    # keyed on outport
+    metadata = conn.metadata.get(outport, None)
+    if metadata:
+        connection['metadata'] = metadata
+    return connection
+
+
+def fbp_iip(comp_name, inport):
+    conn = inport._connection
+    content = conn._content
+    # FIXME: we need to determine the most reliable way to
+    # serialize `content`.
+    # - inport.type is only good when type is not "any".
+    # - serialize() must store extra info about rich types,
+    #   which could confuse a client
+    # - another option is to store the type on the Packet
+    # content = inport.type.to_primitive(content)
+    if inport.auto_receive:
+        content = content[0]
+    connection = {
+        'src': {'data': serialize(content)},
+        'tgt': fbp_portdef(comp_name, inport)
+    }
+    if conn.metadata:
+        connection['metadata'] = conn.metadata
+    return connection
 
 
 class Graph(object):
@@ -69,11 +134,11 @@ class Graph(object):
         self.inports = OrderedDict()
         for name, comp_name, port_name, port_index in inports:
             self.inports[name] = self.get_component_port(
-                (comp_name, port_name), index=port_index)
+                (comp_name, port_name), index=port_index, kind='in')
         self.outports = OrderedDict()
         for name, comp_name, port_name, port_index in outports:
             self.outports[name] = self.get_component_port(
-                (comp_name, port_name), index=port_index)
+                (comp_name, port_name), index=port_index, kind='out')
 
     def copy(self, deep=True):
         """
@@ -172,6 +237,7 @@ class Graph(object):
         comp_type = make_subgraph(name, graph)
         return self.add_component(name, comp_type, **initializations)
 
+    @supports_listeners
     def remove_component(self, name):
         # FIXME: this needs some love
         # assert not self.active
@@ -185,12 +251,14 @@ class Graph(object):
                 self.disconnect(outport._connection.inport, outport)
         # FIXME: remove references in self.inports and self.outports
 
+    @supports_listeners
     def rename_component(self, orig_name, new_name):
         # FIXME: this needs some love
         # assert not self.active
         assert new_name not in self._components
         component = self._components.pop(orig_name)
         self._components[new_name] = component
+        self.rename_component.event.emit(orig_name, new_name, component)
 
     def component(self, name):
         """
@@ -233,7 +301,8 @@ class Graph(object):
         """
         return self._components.get(name)
 
-    # FIXME: remove this and run/move Component._init to __init__
+    # FIXME: remove this and run/move Component._init to __init__ ?
+    @supports_listeners
     def put_component(self, name, comp):
         """
         Adds a component and inits it.
@@ -247,10 +316,12 @@ class Graph(object):
         # building
         comp._init()
         self._components[name] = comp
+        self.put_component.event.emit(name, comp)
 
     # Ports --
 
-    def export(self, internal_port, external_port_name, metadata={}):
+    @supports_listeners
+    def export(self, internal_port, external_port_name, metadata=None):
         """
         Exports component port for connecting to other networks
         as a sub network
@@ -262,6 +333,8 @@ class Graph(object):
         external_port_name : str
             name of port that will be exposed
         """
+        metadata = metadata or {}
+
         internal_port = self.get_component_port(internal_port)
 
         if isinstance(internal_port, InputPort):
@@ -272,14 +345,23 @@ class Graph(object):
             self.outports[external_port_name] = internal_port
             self.outport_metadata[external_port_name] = metadata
 
+        self.export.event.emit(internal_port, external_port_name, metadata)
+
+    @supports_listeners
     def remove_inport(self, external_port_name):
         del self.inports[external_port_name]
         del self.inport_metadata[external_port_name]
+        self.remove_inport.event.emit(external_port_name)
 
+    @supports_listeners
     def remove_outport(self, external_port_name):
         del self.outports[external_port_name]
         del self.outport_metadata[external_port_name]
+        self.remove_outport.event.emit(external_port_name)
 
+    # FIXME: might be better to split this into get_component_inport / get_component_outport
+    # the main argument for the current design is if you don't know or care what
+    # kind of port you want, but in practice, 'kind' is always provided
     def get_component_port(self, arg, index=None, kind=None):
         """
         Get a port on a component.
@@ -320,6 +402,7 @@ class Graph(object):
 
         return port
 
+    @supports_listeners
     def connect(self, sender, receiver, connection_capacity=None,
                 count_packets=False):
         """
@@ -345,8 +428,10 @@ class Graph(object):
         if inport._connection is None:
             inport._connection = Connection()
         inport._connection.connect(inport, outport, connection_capacity)
+        self.connect.event.emit(outport, inport, connection_capacity)
         return inport
 
+    @supports_listeners
     def disconnect(self, sender, receiver):
         """
         Disconnect an output port of one component from an input port of
@@ -365,7 +450,10 @@ class Graph(object):
             inport._connection = None
         else:
             inport._connection.metadata.pop(outport)
+        self.disconnect.event.emit(outport, inport)
 
+    # FIXME: reverse the order of these args
+    @supports_listeners
     def initialize(self, content, receiver):
         """
         Initialize an inport port with a value
@@ -377,7 +465,9 @@ class Graph(object):
         """
         inport = self.get_component_port(receiver, kind='in')
         inport.initialize(content)
+        self.initialize.event.emit(inport, content)
 
+    @supports_listeners
     def uninitialize(self, receiver):
         """
         Remove the initialized value of an inport port.
@@ -392,7 +482,9 @@ class Graph(object):
             The removed initialization connection
         """
         inport = self.get_component_port(receiver, kind='in')
-        return inport.uninitialize()
+        result = inport.uninitialize()
+        self.uninitialize.event.emit(inport)
+        return result
 
     def validate(self):
         """
@@ -422,15 +514,6 @@ class Graph(object):
             json-serializable representation of graph according to fbp json
             standard
         """
-        def portdef(cname, p):
-            doc = {
-                'process': cname,
-                # FIXME: it should be easier to get this value from BasePort
-                'port': p._name if p.is_element() else p.name
-            }
-            if p.is_element():
-                doc['index'] = p.index
-            return doc
 
         definition = {
             'processes': {},
@@ -453,38 +536,14 @@ class Graph(object):
 
                 conn = inport._connection
                 if isinstance(conn, InitializationConnection):
-                    content = conn._content
-                    # FIXME: we need to determine the most reliable way to
-                    # serialize `content`.
-                    # - inport.type is only good when type is not "any".
-                    # - serialize() must store extra info about rich types,
-                    #   which could confuse a client
-                    # - another option is to store the type on the Packet
-                    # content = inport.type.to_primitive(content)
-                    if inport.auto_receive:
-                        content = content[0]
-                    connection = {
-                        'src': {'data': serialize(content)},
-                        'tgt': portdef(comp_name, inport)
-                    }
-                    if conn.metadata:
-                        connection['metadata'] = conn.metadata
-                    definition['connections'].append(connection)
+                    connection = fbp_iip(comp_name, inport)
+                    if connection is not None:
+                        definition['connections'].append(connection)
                 else:
                     for outport in conn.outports:
-                        if outport.component.hidden:
-                            continue
-
-                        sender = outport.component
-                        connection = {
-                            'src': portdef(sender.get_name(), outport),
-                            'tgt': portdef(comp_name, inport)
-                        }
-                        # keyed on outport
-                        metadata = conn.metadata.get(outport, None)
-                        if metadata:
-                            connection['metadata'] = metadata
-                        definition['connections'].append(connection)
+                        connection = fbp_edge(comp_name, outport, inport)
+                        if connection is not None:
+                            definition['connections'].append(connection)
 
         for (name, inport) in self.inports.items():
             definition['inports'][name] = {
@@ -520,9 +579,10 @@ class Graph(object):
         """
         from rill.utils import locate_class
 
-        def _port(p):
+        def _port(p, kind):
             return graph.get_component_port((p['process'], p['port']),
-                                            index=p.get('index', None))
+                                            index=p.get('index', None),
+                                            kind=kind)
 
         graph = cls()
         for (name, spec) in definition['processes'].items():
@@ -535,7 +595,7 @@ class Graph(object):
                 component.metadata.update(spec['metadata'])
 
         for connection in definition['connections']:
-            tgt = _port(connection['tgt'])
+            tgt = _port(connection['tgt'], 'in')
             if 'data' in connection['src']:
                 # static initializer
                 data = connection['src']['data']
@@ -546,14 +606,14 @@ class Graph(object):
                 graph.initialize(content, tgt)
             else:
                 # connection
-                src = _port(connection['src'])
+                src = _port(connection['src'], 'out')
                 graph.connect(src, tgt)
 
         for (name, inport) in definition['inports'].items():
-            graph.export(_port(inport), name)
+            graph.export(_port(inport, 'in'), name)
 
         for (name, outport) in definition['outports'].items():
-            graph.export(_port(outport), name)
+            graph.export(_port(outport, 'out'), name)
 
         return graph
 
@@ -979,6 +1039,8 @@ def run_graph(graph, initializations=None, capture_results=False):
         graph = wrapper
 
     Network(graph).go()
+
+    # FIXME: re-raise errors?
 
     if outports:
         return {name: capture.value for (name, capture) in captures.items()}

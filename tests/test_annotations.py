@@ -1,4 +1,4 @@
-from rill.utils import Annotation, ProxyAnnotation, FlagAnnotation
+from rill.utils.annotations import Annotation, ProxyAnnotation, FlagAnnotation
 import pytest
 
 
