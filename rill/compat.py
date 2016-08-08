@@ -123,7 +123,7 @@ def raise_(tp, value=None, tb=None):
 
 def raise_with_traceback(exc, traceback=Ellipsis):
     if traceback == Ellipsis:
-        _, _, traceback = sys.exc_info()
+        _, _, traceback = _sys.exc_info()
     raise exc, None, traceback
 '''.strip())
 

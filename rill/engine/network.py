@@ -22,14 +22,28 @@ from rill.utils.observer import supports_listeners
 
 from rill.engine.utils import CountDownLatch
 
+def merge_metadata(source_metadata, target_metadata):
+    if source_metadata:
+        source_metadata = source_metadata.copy()
+    else:
+        source_metadata = {}
+
+    for key, value in source_metadata.items():
+        if value is None:
+            source_metadata.pop(key)
+            target_metadata.pop(key, None)
+
+    target_metadata.update(source_metadata)
+    return target_metadata
 
 class Graph(object):
     """
     A graph of ``Components``
     """
-    def __init__(self, name=None, default_capacity=10):
+    def __init__(self, name=None, default_capacity=10, metadata=None):
         self.name = name
         self.default_capacity = default_capacity
+        self.metadata = metadata or {}
 
         # type: OrderedDict[str, rill.engine.component.Component]
         self._components = OrderedDict()
@@ -94,6 +108,33 @@ class Graph(object):
             graph._components = self._components.copy()
             return graph
 
+    @supports_listeners
+    def set_metadata(self, metadata):
+        """
+        Set graph level metadata
+
+        Parameters
+        ----------
+        metadata: dict
+        """
+        merge_metadata(metadata, self.metadata)
+        self.set_metadata.event.emit(metadata)
+        return self.metadata
+
+    @supports_listeners
+    def rename(self, new_name):
+        """
+        Rename graph
+
+        Parameters
+        ----------
+        new_name: str
+        """
+        old_name = self.name
+        self.name = new_name
+        self.rename.event.emit(old_name, new_name)
+        return new_name
+
     # Components --
 
     def _get_unique_name(self, basename):
@@ -155,6 +196,20 @@ class Graph(object):
                 self.initialize(value, receiver)
         return comp
 
+    @supports_listeners
+    def set_node_metadata(self, node, metadata):
+        """
+        Set metadata on node
+
+        Parameters
+        ----------
+        node: ``rill.engine.component.Component``
+        metadata: {}
+        """
+        merge_metadata(metadata, node.metadata)
+        self.set_node_metadata.event.emit(node, metadata)
+        return node.metadata
+
     def add_graph(self, name, graph, **initializations):
         """
         Instantiate a component and add it to the network.
@@ -176,6 +231,13 @@ class Graph(object):
 
     @supports_listeners
     def remove_component(self, name):
+        """
+        Remove component from graph
+
+        Parameters
+        ----------
+        name: str
+        """
         # FIXME: this needs some love
         # assert not self.active
         component = self._components.pop(name)
@@ -191,6 +253,14 @@ class Graph(object):
 
     @supports_listeners
     def rename_component(self, orig_name, new_name):
+        """
+        Change name of component
+
+        Parameters
+        ----------
+        orig_name: str
+        new_name: str
+        """
         # FIXME: this needs some love
         # assert not self.active
         assert new_name not in self._components
@@ -287,15 +357,59 @@ class Graph(object):
 
     @supports_listeners
     def remove_inport(self, external_port_name):
+        """
+        Remove public inport from graph
+
+        Parameters
+        ----------
+        external_port_name: str
+        """
         del self.inports[external_port_name]
         del self.inport_metadata[external_port_name]
         self.remove_inport.event.emit(external_port_name)
 
     @supports_listeners
     def remove_outport(self, external_port_name):
+        """
+        Remove public outport from graph
+
+        Parameters
+        ----------
+        external_port_name: str
+        """
         del self.outports[external_port_name]
         del self.outport_metadata[external_port_name]
         self.remove_outport.event.emit(external_port_name)
+
+    @supports_listeners
+    def set_inport_metadata(self, external_port_name, metadata):
+        """
+        Set metadata on inport
+
+        Parameters
+        ----------
+        external_port_name: str
+        metadata: dict
+        """
+        port_metadata = self.inport_metadata[external_port_name]
+        merge_metadata(metadata, port_metadata)
+        self.set_inport_metadata.event.emit(external_port_name, metadata)
+        return port_metadata
+
+    @supports_listeners
+    def set_outport_metadata(self, external_port_name, metadata):
+        """
+        Set metadata on outport
+
+        Parameters
+        ----------
+        external_port_name: str
+        metadata: dict
+        """
+        port_metadata = self.outport_metadata[external_port_name]
+        merge_metadata(metadata, port_metadata)
+        self.set_outport_metadata.event.emit(external_port_name, metadata)
+        return port_metadata
 
     # FIXME: might be better to split this into get_component_inport / get_component_outport
     # the main argument for the current design is if you don't know or care what
@@ -342,7 +456,7 @@ class Graph(object):
 
     @supports_listeners
     def connect(self, sender, receiver, connection_capacity=None,
-                count_packets=False):
+                count_packets=False, metadata=None):
         """
         Connect an output port of one component to an input port of another.
 
@@ -366,7 +480,13 @@ class Graph(object):
         if inport._connection is None:
             inport._connection = Connection()
         inport._connection.connect(inport, outport, connection_capacity)
-        self.connect.event.emit(outport, inport, connection_capacity)
+
+        metadata = metadata or {}
+        edge_metadata = inport._connection.metadata.setdefault(outport, {})
+        edge_metadata.update(metadata)
+
+        self.connect.event.emit(outport, inport, connection_capacity, metadata)
+
         return inport
 
     @supports_listeners
@@ -383,12 +503,35 @@ class Graph(object):
         outport = self.get_component_port(sender, kind='out')
         inport = self.get_component_port(receiver, kind='in')
         outport._connection = None
+        if outport._connections:
+            outport._connections.remove(inport._connection)
+
         inport._connection.outports.remove(outport)
         if not inport._connection.outports:
             inport._connection = None
         else:
             inport._connection.metadata.pop(outport)
+
         self.disconnect.event.emit(outport, inport)
+
+    @supports_listeners
+    def set_edge_metadata(self, sender, receiver, metadata):
+        """
+        Set metadata on edge
+
+        Parameters
+        ----------
+        sender : Union[``rill.engine.inputport.InputPort``, str]
+        receiver : Union[``rill.engine.outputport.OutputPort``, str]
+        metadata: dict
+        """
+        outport = self.get_component_port(sender, kind='out')
+        inport = self.get_component_port(receiver, kind='in')
+        edge_metadata = inport._connection.metadata.setdefault(outport, {})
+
+        merge_metadata(metadata, edge_metadata)
+        self.set_edge_metadata.event.emit(outport, inport, metadata)
+        return edge_metadata
 
     # FIXME: reverse the order of these args
     @supports_listeners
@@ -476,13 +619,13 @@ class Graph(object):
                 conn = inport._connection
                 if isinstance(conn, InitializationConnection):
                     definition['connections'].append(
-                        fbp_iip(inport))
+                        fbp_iip(inport, self.name, 'process'))
                 else:
                     for outport in conn.outports:
                         if outport.component.hidden:
                             continue
                         definition['connections'].append(
-                            fbp_edge(outport, inport))
+                            fbp_edge(outport, inport, self.name, 'process'))
 
         for (name, inport) in self.inports.items():
             definition['inports'][name] = {
@@ -768,6 +911,7 @@ class Network(object):
         """
         Interrupt all components
         """
+        import sys
         logger.warning("*** Crashing whole application!")
 
         # FIXME: overkill

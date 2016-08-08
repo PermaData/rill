@@ -1,5 +1,5 @@
-import weakref
 import types
+import weakref
 
 
 class BoundMethodWeakref(object):
@@ -276,7 +276,7 @@ class Event(object):
         instance if calling the listener raised one.
         '''
         results = {}
-#         kwargs['__event__'] = self
+        # kwargs['__event__'] = self
         for listener in self._listeners.values():
             if isinstance(listener, (weakref.ReferenceType, BoundMethodWeakref)):
                 listener = listener()
@@ -307,6 +307,37 @@ class Event(object):
         return id(listener)
 
 
+class MethodProxy(object):
+    """
+    Represents instance method for listener supporting methods
+    """
+    def __init__(self, method):
+        self.method = method
+        self.event = Event(method.__name__)
+
+    def __call__(self, *args, **kwargs):
+        result = self.method(*args, **kwargs)
+        return result
+
+
+class SupportsListeners(object):
+    """
+    Replaces method on class for listener supporting methods
+    """
+    def __init__(self, method):
+        self.method = method
+        self.registry = weakref.WeakKeyDictionary()
+
+    def __get__(self, instance, owner):
+        if not self.registry.get(instance, False):
+            method = types.MethodType(self.method, instance, owner)
+            self.registry[instance] = listener = MethodProxy(method)
+        else:
+            listener = self.registry[instance]
+
+        return listener
+
+
 def supports_listeners(f):
     """
     Decorator to bind an event to a function.
@@ -314,8 +345,10 @@ def supports_listeners(f):
     An Event instance is bound to an `event` attribute on the function, and uses
     the function's name as the event name.
     """
-    f.event = Event(f.__name__)
-    return f
+    if callable(f):
+        return SupportsListeners(f)
+    else:
+        return SupportsListeners
 
 
 __all__ = ('supports_listeners', 'Event')

@@ -183,7 +183,7 @@ def test_component_spec():
                 'description': 'Count of packets to be generated',
                 'id': 'COUNT',
                 'required': False,
-                'type': 'int'
+                'schema': {'type': 'int'}
             }
         ],
         'outPorts': [
@@ -198,7 +198,7 @@ def test_component_spec():
                 'description': 'Generated stream',
                 'id': 'OUT',
                 'required': False,
-                'type': 'string'
+                'schema': {'type': 'string'}
             }
         ],
         'subgraph': False

@@ -9,15 +9,17 @@ class GraphListener(object):
     """
     GRAPH_COMMAND_TO_METHOD = {
         'clear': 'new_graph',
+        'changegraph': 'set_graph_metadata',
+        'renamegraph': 'rename_graph',
         # Nodes
         'addnode': 'add_node',
         'removenode': 'remove_node',
         'renamenode': 'rename_node',
-        'changeedge': 'set_edge_metadata',
+        'changenode': 'set_node_metadata',
         # Edges/connections
         'addedge': 'add_edge',
         'removeedge': 'remove_edge',
-        'changenode': 'set_node_metadata',
+        'changeedge': 'set_edge_metadata',
         # IIP / literals
         'addinitial': 'initialize_port',
         'removeinitial': 'uninitialize_port',
@@ -27,7 +29,7 @@ class GraphListener(object):
         'removeinport': 'remove_inport',
         'removeoutport': 'remove_outport',
         'changeinport': 'set_inport_metadata',
-        'changeoutport': 'change_outport',
+        'changeoutport': 'set_outport_metadata',
     }
 
     def __init__(self, dispatchers):

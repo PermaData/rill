@@ -493,3 +493,25 @@ def test_stream_initialization():
 
     assert passthru1.ports.IN._connection._content == [[1, 2, 3]]
     assert passthru2.ports.IN._connection._content == [1, 2, 3]
+
+
+def test_set_connection_metadata():
+    graph = Graph()
+    gen = graph.add_component("generate", GenerateTestData, COUNT=10)
+    dis = graph.add_component("dis", Discard)
+    graph.connect("generate.OUT", "dis.IN", metadata={'route': 4})
+
+    outport = graph.get_component_port(('generate', 'OUT'), kind='out')
+    inport = graph.get_component_port(('dis', 'IN'), kind='in')
+
+    metadata = inport._connection.metadata.get(outport)
+    assert metadata == {'route': 4}
+
+    graph.set_edge_metadata(outport, inport, metadata={
+        'label': 'test',
+        'route': None
+    })
+
+    metadata = inport._connection.metadata.get(outport)
+    assert metadata == {'label': 'test'}
+

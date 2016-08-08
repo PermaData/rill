@@ -17,6 +17,18 @@ class GraphDispatcher(object):
         """
 
     @abstractmethod
+    def set_graph_metadata(self, payload):
+        """
+        Set Graph Metadata
+        """
+
+    @abstractmethod
+    def rename_graph(self, payload):
+        """
+        Rename Graph
+        """
+
+    @abstractmethod
     def add_node(self, payload):
         """
         Add a component instance.

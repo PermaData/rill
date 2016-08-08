@@ -401,7 +401,7 @@ def deserialize(data):
         if '__type__' in data:
             typ = locate_class(data['__type__'])
             handler = get_type_handler(typ)
-            print "deserializing", data['value'], handler.type_def
+            print("deserializing", data['value'], handler.type_def)
             return handler.to_native(data['value'])
         else:
             newobj = collections.OrderedDict()

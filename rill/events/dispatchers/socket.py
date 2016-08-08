@@ -10,6 +10,7 @@ class SocketGraphDispatcher(GraphDispatcher):
     """
     def __init__(self, socket):
         self.socket = socket
+        socket.subscriptions.append(self)
 
     def send(self, protocol, command, payload):
         if not self.socket:
