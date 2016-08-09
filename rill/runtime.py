@@ -723,6 +723,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
             protocol = m['protocol']
             command = m['command']
             payload = m['payload']
+            message_id = m.get('id', None)
         except KeyError:
             # FIXME: send error?
             self.logger.warn("Malformed message")
@@ -739,19 +740,20 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
             return
 
         try:
-            handler(command, payload)
+            handler(command, payload, message_id)
         except RillRuntimeError as err:
             self.send_error(protocol, str(err))
 
     # Utilities --
 
-    def send(self, protocol, command, payload):
+    def send(self, protocol, command, payload, message_id=None):
         """
         Send a message to UI/client
         """
         message = {'protocol': protocol,
                    'command': command,
-                   'payload': payload}
+                   'payload': payload,
+                   'id': message_id or str(uuid.uuid4())}
         print("--OUT--")
         import pprint
         pprint.pprint(message)
@@ -797,7 +799,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
 
     # Protocol send/responses --
 
-    def handle_runtime(self, command, payload):
+    def handle_runtime(self, command, payload, message_id):
         # tell UI info about runtime and supported capabilities
         if command == 'getruntime':
             payload = self.runtime.get_runtime_meta()
@@ -817,7 +819,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
             self.logger.warn("Unknown command '%s' for protocol '%s' " %
                              (command, 'runtime'))
 
-    def handle_component(self, command, payload):
+    def handle_component(self, command, payload, message_id):
         """
         Provide information about components.
         Parameters
@@ -851,7 +853,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
             self.logger.warn("Unknown command '%s' for protocol '%s' " %
                              (command, 'component'))
 
-    def handle_graph(self, command, payload):
+    def handle_graph(self, command, payload, message_id):
         """
         Modify our graph representation to match that of the UI/client
         Parameters
@@ -981,9 +983,9 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
             print "CLIENTS: {}".format(len(clients.items()))
             for client_id, client in clients.items():
                 if client_id != self.client_id:
-                    client.send('graph', command, payload)
+                    client.send('graph', command, payload, message_id)
 
-    def handle_network(self, command, payload):
+    def handle_network(self, command, payload, message_id):
         """
         Start / Stop and provide status messages about the network.
         Parameters
