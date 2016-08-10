@@ -42,7 +42,6 @@ setup_primitive_types()
 schema_kwargs_to_schematics = {
     'maxLength': 'max_length',
     'minLength': 'min_length',
-    'pattern': 'regex',
     'minimum': 'min_value',
     'maximum': 'max_value',
     'enum': 'choices',
@@ -81,6 +80,10 @@ def _convert_field(field_instance):
             value = getattr(field_instance, schematic_key, None)
             if value is not None:
                 schema[js_key] = value
+        if isinstance(field_instance, schematics.types.StringType):
+            regex = field_instance.regex
+            if regex is not None:
+                schema['pattern'] = regex.pattern
     else:
         raise TypeError(field_instance)
     # TODO: UnionType
