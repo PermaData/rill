@@ -176,7 +176,8 @@ def test_component_spec():
                 'description': '',
                 'id': 'wait',
                 'required': False,
-                'type': 'bang'},
+                'type': 'bang'
+            },
             {
                 'addressable': False,
                 'default': 1,
@@ -192,7 +193,8 @@ def test_component_spec():
                 'description': '',
                 'id': 'done',
                 'required': False,
-                'type': 'bang'},
+                'type': 'bang'
+            },
             {
                 'addressable': False,
                 'description': 'Generated stream',
