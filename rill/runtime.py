@@ -336,7 +336,7 @@ class Runtime(object):
         -------
         List[Dict[str, Any]]
         """
-        return [data['spec'] for data in self._component_types.itervalues()]
+        return [data['spec'] for data in self._component_types.values()]
 
     def register_component(self, component_class, overwrite=False):
         """
