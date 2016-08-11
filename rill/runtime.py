@@ -19,7 +19,7 @@ from rill.engine.inputport import Connection
 from rill.engine.outputport import OutputPort
 from rill.engine.network import Graph, Network
 from rill.engine.subnet import SubGraph, make_subgraph
-from rill.engine.types import FBP_TYPES
+from rill.engine.types import FBP_TYPES, Stream
 from rill.engine.exceptions import FlowError
 from rill.compat import *
 
@@ -610,6 +610,8 @@ class Runtime(object):
         #     graph.disconnect(target_port)
 
         # FIXME: handle deserialization?
+        if not target_port.auto_receive:
+            data = Stream(data)
         graph.initialize(data, target_port)
 
     def uninitialize_port(self, graph_id, tgt):
