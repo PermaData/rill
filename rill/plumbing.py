@@ -20,7 +20,7 @@ from zmq.utils.strtypes import bytes, unicode, asbytes
 from posixpath import join
 
 from rill.events.listeners.memory import get_graph_messages
-from rill.runtime import RillRuntimeError
+from rill.engine.exceptions import FlowError
 
 
 # If no server replies within this time, abandon request
@@ -31,10 +31,6 @@ SERVER_TTL = 5.0  # secs
 SERVER_MAX = 2
 
 SNAPSHOT_PORT_OFFSET = 0
-
-logging.basicConfig(format="%(asctime)s %(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S",
-                    level=logging.INFO)
 
 
 def is_socket_type(socket, typ):
@@ -176,6 +172,14 @@ class Message(object):
             setattr(msg, attr, value)
         return msg
 
+    def to_dict(self):
+        return {
+            'protocol': self.protocol,
+            'command': self.command,
+            'payload': self.payload,
+            'message_id': self.id
+        }
+
     def sendto(self, socket, prefix=None):
         """
         Send this Message to a socket.
@@ -206,7 +210,6 @@ class Message(object):
         if self.revision is not None:
             frames.append(bytes(self.revision))
 
-        print("%s" % frames)
         socket.send_multipart(frames)
 
 
@@ -221,13 +224,18 @@ class Client(object):
         self.graph = None
 
     def watch_graph(self, graph, sync=True):
-        """Sends [SUBSCRIBE][graph] to the agent"""
+        """
+        Receive update messages for a graph.
+
+        Sends [SUBSCRIBE][graph] to the agent
+        """
         self.graph = graph
         # FIXME: we should probably just use json here
         self.pipe.send_multipart([b"SUBSCRIBE", graph, bytes(int(sync))])
 
     def connect(self, address, port):
-        """Connect to new runtime server endpoint
+        """
+        Connect to new runtime server endpoint
 
         Sends [CONNECT][address][port] to the agent
         """
@@ -236,25 +244,25 @@ class Client(object):
              (address.encode() if isinstance(address, str) else address),
              b'%d' % port])
 
-    def send(self, proto, command, payload, message_id=None):
-        """Send a message to the runtime
+    def send(self, msg):
+        """
+        Send a message to the runtime
 
         Sends [SEND][proto][command][payload] to the agent
         """
-        msg = Message(proto, command, payload, message_id)
 
         # FIXME: it would be great if we didn't need to deserialize the payload coming from the websocket
 
         # FIXME: handle removegraph
-        if proto == 'graph' and command in ('addgraph', 'clear'):
-            # 'clear': create a new graph or wipe an existing graph
-            # 'addgraph': create a new graph or fail if it exists
-            print(payload)
+        if msg.protocol == 'graph' and msg.command in ('addgraph', 'clear'):
+            # 'clear': creates a new graph or wipes an existing graph
+            # 'addgraph': creates a new graph or fails if it exists
+            print(msg.payload)
             # subscribe to the graph
-            self.watch_graph(payload['id'], sync=False)
-        elif (proto, command) == ('graph', 'watch'):
+            self.watch_graph(msg.payload['id'], sync=False)
+        elif (msg.protocol, msg.command) == ('graph', 'watch'):
             # subscribe to the graph: this will trigger a state sync
-            self.watch_graph(payload['id'], sync=True)
+            self.watch_graph(msg.payload['id'], sync=True)
             # no changes are required server-side: nothing else left to do.
             return
 
@@ -527,7 +535,7 @@ class RuntimeHandler(object):
 
         try:
             handler(msg)
-        except RillRuntimeError as err:
+        except FlowError as err:
             self.send_error(msg.protocol, str(err))
 
     # Utilities --
@@ -627,7 +635,7 @@ class RuntimeHandler(object):
             try:
                 return payload['graph']
             except KeyError:
-                raise RillRuntimeError('No graph specified')
+                raise FlowError('No graph specified')
 
         # def update_subnet(graph_id):
         #     spec = self.runtime.register_subnet(graph_id)
@@ -706,7 +714,7 @@ class RuntimeHandler(object):
         #             graph, graph_id)
         #         for command, payload in graph_messages:
         #             self.send('graph', command, payload)
-        #     except RillRuntimeError as ex:
+        #     except FlowError as ex:
         #         self.runtime.new_graph(graph_id)
         #
         # elif command == 'list':
@@ -922,7 +930,7 @@ def run_client():
 
     print("sending graph")
     for command, payload in get_graph_messages(graph, graph_id):
-        client.send('graph', command, payload)
+        client.send(Message('graph', command, payload))
     gevent.joinall([client.agent])
 
 

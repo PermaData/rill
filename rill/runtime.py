@@ -4,23 +4,18 @@ import logging
 import json
 from collections import OrderedDict
 import inspect
-import functools
-import traceback
-import datetime
 import weakref
 from functools import wraps
-import uuid
 
 import gevent
 import geventwebsocket
 
 from rill.engine.component import Component
-from rill.engine.inputport import Connection
-from rill.engine.outputport import OutputPort
 from rill.engine.network import Graph, Network
 from rill.engine.subnet import SubGraph, make_subgraph
 from rill.engine.types import FBP_TYPES, Stream
 from rill.engine.exceptions import FlowError
+from rill.plumbing import Client, RuntimeServer, Message
 from rill.compat import *
 
 from typing import Union, Any, Iterator, Dict
@@ -689,7 +684,6 @@ class Runtime(object):
         self._graphs[new_id] = graph
 
 
-clients = {}
 class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
     """
     Web socket application that hosts a single ``Runtime`` instance.
@@ -698,19 +692,15 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
     responses where applicable.
     Message structures are defined by the FBP Protocol.
     """
-    runtimes = {}
 
     def __init__(self, ws):
         super(WebSocketRuntimeApplication, self).__init__(ws)
 
+        self.client = Client(self.on_response)
+        self.client.connect("tcp://localhost", 5556)
+
         self.logger = logging.getLogger('{}.{}'.format(
             self.__class__.__module__, self.__class__.__name__))
-        self.runtime = self.runtimes[int(ws.environ['SERVER_PORT'])]
-
-        # FIXME: move to on_open?
-        # insert a listener
-        Connection.send = add_callback(Connection.send,
-                                       self.send_connection_data)
 
     # WebSocketApplication overrides --
 
@@ -721,371 +711,13 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         """
         return 'noflo'
 
-    def on_open(self):
-        self.client_id = uuid.uuid4()
-        print 'connected: {}'.format(str(self.client_id))
-        clients[self.client_id] = self
-        self.logger.info("Connection opened")
-
-    def on_close(self, reason):
-        del clients[self.client_id]
-        print 'disconnected: {}'.format(str(self.client_id))
-        self.client_id = None
-        self.logger.info("Connection closed. Reason: {}".format(reason))
-
     def on_message(self, message, **kwargs):
-        self.logger.debug('MESSAGE: {}'.format(message))
+        self.logger.debug('INCOMING: {}'.format(message))
+        self.client.send(Message(**json.loads(message)))
 
-        if not message:
-            self.logger.warn('Got empty message')
-            return
-
-        m = json.loads(message)
-        dispatch = {
-            'runtime': self.handle_runtime,
-            'component': self.handle_component,
-            'graph': self.handle_graph,
-            'network': self.handle_network
-        }
-        import pprint
-        print("--IN--")
-        pprint.pprint(m)
-
-        try:
-            protocol = m['protocol']
-            command = m['command']
-            payload = m['payload']
-            message_id = m.get('id', None)
-        except KeyError:
-            # FIXME: send error?
-            self.logger.warn("Malformed message")
-            return
-
-        # FIXME: use the json-schema files from FBP protocol to validate
-        # message structure
-        try:
-            handler = dispatch[protocol]
-        except KeyError:
-            # FIXME: send error?
-            self.logger.warn("Subprotocol '{}' "
-                             "not supported".format(protocol))
-            return
-
-        try:
-            handler(command, payload, message_id)
-        except RillRuntimeError as err:
-            self.send_error(protocol, str(err))
-
-    # Utilities --
-
-    def send(self, protocol, command, payload, message_id=None):
-        """
-        Send a message to UI/client
-        """
-        message = {'protocol': protocol,
-                   'command': command,
-                   'payload': payload,
-                   'id': message_id or str(uuid.uuid4())}
-        print("--OUT--")
-        import pprint
-        pprint.pprint(message)
-        # FIXME: what do we do when the socket closes or is dead?
-        try:
-            self.ws.send(json.dumps(message))
-        except geventwebsocket.WebSocketError as err:
-            print(err)
-
-    def send_error(self, protocol, message):
-        data = {
-            'message': message,
-            'stack': traceback.format_exc()
-        }
-        self.send(protocol, 'error', data)
-
-    def send_connection_data(self, connection, packet, outport):
-        """
-        Setup as a callback for ``rill.engine.inputport.Connection.send``
-        so that packets sent by this method are intercepted and reported
-        to the UI/client.
-        """
-        inport = connection.inport
-        payload = {
-            'id': '{} {} -> {} {}'.format(
-                outport.component.get_name(),
-                outport._name,
-                inport._name,
-                inport.component.get_name(),
-            ),
-            'graph': 'main',  # FIXME
-            'src': {
-                'node': outport.component.get_name(),
-                'port': outport._name
-            },
-            'tgt': {
-                'node': inport.component.get_name(),
-                'port': inport._name
-            },
-            'data': packet.get_contents()
-        }
-        self.send('network', 'data', payload)
-
-    # Protocol send/responses --
-
-    def handle_runtime(self, command, payload, message_id):
-        # tell UI info about runtime and supported capabilities
-        if command == 'getruntime':
-            payload = self.runtime.get_runtime_meta()
-            # self.logger.debug(json.dumps(payload, indent=4))
-            self.send('runtime', 'runtime', payload)
-
-        # network:packet, allows sending data in/out to networks in this
-        # runtime can be used to represent the runtime as a FBP component
-        # in bigger system "remote subgraph"
-        elif command == 'packet':
-            # We don't actually run anything, just echo input back and
-            # pretend it came from "out"
-            payload['port'] = 'out'
-            self.send('runtime', 'packet', payload)
-
-        else:
-            self.logger.warn("Unknown command '%s' for protocol '%s' " %
-                             (command, 'runtime'))
-
-    def handle_component(self, command, payload, message_id):
-        """
-        Provide information about components.
-        Parameters
-        ----------
-        command : str
-        payload : dict
-        """
-        if command == 'list':
-            for spec in self.runtime.get_all_component_specs():
-                self.send('component', 'component', spec)
-
-            self.send('component', 'componentsready', None)
-        # Get source code for component
-        elif command == 'getsource':
-            raise TypeError("HEREREREREHRERERE")
-            component_name = payload['name']
-            source_code = self.runtime.get_source_code(component_name)
-
-            library_name, short_component_name = component_name.split('/', 1)
-
-            payload = {
-                'name': short_component_name,
-                'language': 'python',
-                'library': library_name,
-                'code': source_code,
-                #'tests': ''
-                'secret': payload.get('secret')
-            }
-            self.send('component', 'source', payload)
-        else:
-            self.logger.warn("Unknown command '%s' for protocol '%s' " %
-                             (command, 'component'))
-
-    def handle_graph(self, command, payload, message_id):
-        """
-        Modify our graph representation to match that of the UI/client
-        Parameters
-        ----------
-        command : str
-        payload : dict
-        """
-        # Note: if it is possible for the graph state to be changed by
-        # other things than the client you must send a message on the
-        # same format, informing the client about the change
-        # Normally done using signals,observer-pattern or similar
-
-        send_ack = True
-
-        def get_graph():
-            try:
-                return payload['graph']
-            except KeyError:
-                raise RillRuntimeError('No graph specified')
-
-        def update_subnet(graph_id):
-            spec = self.runtime.register_subnet(graph_id)
-            self.send(
-                'component',
-                'component',
-                spec
-            )
-
-        try:
-            # New graph
-            if command == 'clear':
-                self.runtime.new_graph(
-                    payload['id'],
-                    payload.get('description', None),
-                    payload.get('metadata', None)
-                )
-            # Nodes
-            elif command == 'addnode':
-                self.runtime.add_node(get_graph(), payload['id'],
-                                      payload['component'],
-                                      payload.get('metadata', {}))
-            elif command == 'removenode':
-                self.runtime.remove_node(get_graph(), payload['id'])
-            elif command == 'renamenode':
-                self.runtime.rename_node(get_graph(), payload['from'],
-                                         payload['to'])
-            # Edges/connections
-            elif command == 'addedge':
-                metadata = self.runtime.add_edge(get_graph(), payload['src'],
-                                                 payload['tgt'],
-                                                 payload.get('metadata', {}))
-                # send an immedate followup to set the color based on type
-                send_ack = True
-                payload['metadata'] = metadata
-                self.send('graph', command, payload)
-                self.send('graph', 'changeedge', payload)
-            elif command == 'removeedge':
-                self.runtime.remove_edge(get_graph(), payload['src'],
-                                         payload['tgt'])
-            # IIP / literals
-            elif command == 'addinitial':
-                self.runtime.initialize_port(get_graph(), payload['tgt'],
-                                             payload['src']['data'])
-            elif command == 'removeinitial':
-                iip = self.runtime.uninitialize_port(get_graph(),
-                                                     payload['tgt'])
-                payload['src'] = {'data': iip}
-                # FIXME: hard-wiring metdata here to pass fbp-test
-                payload['metadata'] = {}
-            # Exported ports
-            elif command in ('addinport', 'addoutport'):
-                self.runtime.add_export(get_graph(), payload['node'],
-                                        payload['port'], payload['public'], payload['metadata'])
-                update_subnet(get_graph())
-            elif command == 'removeinport':
-                self.runtime.remove_inport(get_graph(), payload['public'])
-                update_subnet(get_graph())
-            elif command == 'removeoutport':
-                self.runtime.remove_outport(get_graph(), payload['public'])
-                update_subnet(get_graph())
-            elif command == 'changeinport':
-                self.runtime.change_inport(
-                    get_graph(), payload['public'], payload['metadata'])
-            elif command == 'changeoutport':
-                self.runtime.change_outport(
-                    get_graph(), payload['public'], payload['metadata'])
-            # Metadata changes
-            elif command == 'changenode':
-                metadata = self.runtime.set_node_metadata(get_graph(),
-                                                          payload['id'],
-                                                          payload['metadata'])
-                payload['metadata'] = metadata
-            elif command == 'changeedge':
-                metadata = self.runtime.set_edge_metadata(get_graph(),
-                                                          payload['src'],
-                                                          payload['tgt'],
-                                                          payload['metadata'])
-                payload['metadata'] = metadata
-            elif command == 'getgraph':
-                send_ack = False
-                graph_id = payload['id']
-                try:
-                    graph = self.runtime.get_graph(graph_id)
-                    graph_messages = get_graph_messages(
-                        graph, graph_id)
-                    for command, payload in graph_messages:
-                        self.send('graph', command, payload)
-                except RillRuntimeError as ex:
-                    self.runtime.new_graph(graph_id)
-
-            elif command == 'list':
-                send_ack = False
-                for graph_id in self.runtime._graphs.keys():
-                    self.send('graph', 'graph', {
-                        'id': graph_id
-                    })
-
-                self.send('graph', 'graphsdone', None)
-
-            elif command == 'changegraph':
-                send_ack = True
-                self.runtime.change_graph(
-                    get_graph(),
-                    payload.get('description', None),
-                    payload.get('metadata', None)
-                )
-
-            elif command == 'renamegraph':
-                send_ack = True
-                self.runtime.rename_graph(payload['from'], payload['to'])
-
-            else:
-                self.logger.warn("Unknown command '%s' for protocol '%s'" %
-                                 (command, 'graph'))
-                return
-        except FlowError as ex:
-            self.send_error('graph', str(ex))
-
-        # For any message we respected, send same in return as
-        # acknowledgement
-        if send_ack:
-            self.send('graph', command, payload)
-            print "CLIENTS: {}".format(len(clients.items()))
-            for client_id, client in clients.items():
-                if client_id != self.client_id:
-                    client.send('graph', command, payload, message_id)
-
-    def handle_network(self, command, payload, message_id):
-        """
-        Start / Stop and provide status messages about the network.
-        Parameters
-        ----------
-        command : str
-        payload : dict
-        """
-        def send_status(cmd, g, timestamp=True, broadcast=False):
-            started, running = self.runtime.get_status(g)
-            data = {
-                'graph': g,
-                'started': started,
-                'running': running,
-                # 'debug': True,
-            }
-            if timestamp:
-                data['time'] = datetime.datetime.now().isoformat()
-
-            self.send('network', cmd, data)
-            if broadcast:
-                for client_id, client in clients.items():
-                    if client_id != self.client_id:
-                        client.send('network', cmd, data)
-            # FIXME: hook up component logger to and output handler
-            # self.send('network', 'output', {'message': 'TEST!'})
-            # if started and running:
-            #     payload = {u'component': u'tests.components/GenerateTestData',
-            #   u'graph': u'575ed4de-39c9-3698-a4be-f5395d9eda2f',
-            #   u'id': u'tests.components/GenerateTestData_zoa2g',
-            #   u'metadata': {u'label': u'GenerateTestData',
-            #                 u'x': 334,
-            #                 u'y': 100},
-            #   u'secret': u'9129923'}
-            #     self.send('graph', 'addnode', payload)
-
-        graph_id = payload.get('graph', None)
-        if command == 'getstatus':
-            send_status('status', graph_id, timestamp=False)
-        elif command == 'start':
-            callback = functools.partial(
-                send_status, 'stopped', graph_id, broadcast=True)
-            self.runtime.start(graph_id, callback)
-            send_status('started', graph_id, broadcast=True)
-        elif command == 'stop':
-            self.runtime.stop(graph_id)
-            send_status('stopped', graph_id, broadcast=True)
-        elif command == 'debug':
-            self.runtime.set_debug(graph_id, payload['enable'])
-            self.send('network', 'debug', payload)
-        else:
-            self.logger.warn("Unknown command '%s' for protocol '%s'" %
-                             (command, 'network'))
+    def on_response(self, msg):
+        self.logger.debug("OUTCOMING: %r" % msg)
+        self.ws.send(json.dumps(msg.to_dict()))
 
 
 # FIXME: do we need the host?
@@ -1096,20 +728,20 @@ def serve_runtime(runtime=None, host=DEFAULTS['host'], port=DEFAULTS['port'],
     runtime = runtime if runtime is not None else Runtime()
     address = 'ws://{}:{:d}'.format(host, port)
 
-    def runtime_application_task():
+    def runtime_server_task():
+        server = RuntimeServer(runtime)
+        server.start()
+
+    def websocket_application_task():
         """
         This greenlet runs the websocket server that responds to remote commands
         that inspect/manipulate the Runtime.
         """
         print('Runtime listening at {}'.format(address))
-        WebSocketRuntimeApplication.runtimes[port] = runtime
-        try:
-            r = geventwebsocket.Resource(
-                OrderedDict([('/', WebSocketRuntimeApplication)]))
-            s = geventwebsocket.WebSocketServer(('', port), r)
-            s.serve_forever()
-        finally:
-            WebSocketRuntimeApplication.runtimes.pop(port)
+        r = geventwebsocket.Resource(
+            OrderedDict([('/', WebSocketRuntimeApplication)]))
+        server = geventwebsocket.WebSocketServer(('', port), r)
+        server.serve_forever()
 
     def local_registration_task():
         """
@@ -1119,7 +751,7 @@ def serve_runtime(runtime=None, host=DEFAULTS['host'], port=DEFAULTS['port'],
         from rill.registry import serve_registry
         serve_registry(registry_host, registry_port, host, port)
 
-    tasks = [runtime_application_task, local_registration_task]
+    tasks = [runtime_server_task, websocket_application_task]
 
     # Start!
     gevent.wait([gevent.spawn(t) for t in tasks])
