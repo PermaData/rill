@@ -39,6 +39,8 @@ def merge_metadata(source_metadata, target_metadata):
 class Graph(object):
     """
     A graph of ``Components``
+    Consists of all components and the connections between them. Building this
+    graph
     """
     def __init__(self, name=None, default_capacity=10, description=None,
                  metadata=None):
@@ -705,6 +707,8 @@ class Graph(object):
 class Network(object):
     """
     Responsible for executing a ``Graph`` instance.
+    This is generally the last thing you want to do, after having set up the
+    full graph you intend to use.
     """
 
     def __init__(self, graph, deadlock_test_interval=1):

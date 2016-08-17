@@ -417,6 +417,11 @@ class Connection(BaseConnection):
         self._not_full = gevent.event.Event()
 
     def count(self):
+        """
+        Return
+        ------
+        The number of packets currently queued
+        """
         return len(self._queue)
 
     def open(self):
@@ -428,6 +433,7 @@ class Connection(BaseConnection):
 
         This will prevent any more packets from being sent to or received from
         this connection.
+        Also discards any queued packets.
         """
 
         if self.is_closed():

@@ -9,6 +9,7 @@ class PacketType(Enum):
 
 
 class Chain(object):
+    """Holds packets in a queue ???"""
     def __init__(self, name):
         self.name = name
         self.members = []
@@ -30,6 +31,7 @@ class Packet(object):
         self.owner = None
         self._type = type
         # dict of {str: object}
+        # Is metadata about this packet, like name ???
         self.attrs = {}
         # dict of {str: Chain}
         self.chains = {}
@@ -79,13 +81,14 @@ class Packet(object):
         return []
 
     def get_chains(self):
-        """Get all chains for this Packet
+        """Get names of all chains that this Packet is a member of
         """
         return self.chains.keys()
 
     def get_contents(self):
         """Get packet's contents
         """
+        # NOTE: Really should have mode checking
         # if (self._type == NORMAL)
         return self._content
         # else

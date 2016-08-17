@@ -44,6 +44,7 @@ class Component(object):
         Parameters
         ----------
         name : str
+            Unique identifier of this component within its graph.
         """
         assert name is not None
         self._name = name
@@ -84,6 +85,7 @@ class Component(object):
         """
         Initialize internal attributes.
         """
+        # NOTE: Not called? at least not here
         self.ports = PortCollection(
             self, [p.create_port(self) for p in self.port_definitions().values()])
 
@@ -96,6 +98,7 @@ class Component(object):
         Returns
         -------
         ``rill.engine.network.Network``
+            The network this component is running within.
         """
         return self._runner.network
 
@@ -104,6 +107,7 @@ class Component(object):
         Returns
         -------
         List[``rill.engine.network.Graph``]
+            A list of all the graphs that this component belongs to.
         """
         if self._runner is None:
             return []
@@ -114,7 +118,9 @@ class Component(object):
         Returns
         -------
         List[``Component``]
+            A list of all child Components owned by this one.
         """
+        # NOTE: Components cannot have children?
         return []
 
     # FIXME: remove this in favor of name property
@@ -136,6 +142,7 @@ class Component(object):
         Returns
         -------
         str
+            The name of this component, as set in __init__.
         """
         return self._name
 
@@ -150,6 +157,8 @@ class Component(object):
         Returns
         -------
         str
+            A dot-separated list of parent graphs, with this Component's name
+            on the end.
         """
         parts = [x.name for x in self.get_parents() if x.name is not None]
         return '.'.join(parts + [self.get_name()])
@@ -162,6 +171,7 @@ class Component(object):
         Returns
         -------
         str
+            Path to this class definition
         """
         name = cls.type_name or cls.__name__
         return '{0}/{1}'.format(cls.__module__, name)
@@ -174,6 +184,8 @@ class Component(object):
         Returns
         -------
         dict
+            A packet according to the specification here:
+            https://flowbased.github.io/fbp-protocol/#component
         """
         import textwrap
         from rill.engine.subnet import SubGraph

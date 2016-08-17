@@ -42,7 +42,7 @@ class PortInterface(object):
     These can be either "real" ports, like ``InputPort`` and ``OutputPort``
     or "virtual" ports that implement ``OutputPortInterface`` or
     ``InputPortInterface`` for sending or receiving.  Only "real" ports
-    (sublcasses of ``BasePort``) can be opened.
+    (subclasses of ``BasePort``) can be opened.
     """
     kind = None
 
@@ -82,11 +82,18 @@ class BasePort(object):
         Parameters
         ----------
         component : ``rill.engine.component.Component``
+            Component this port is attached to
         name : str
+            A unique identifier in the context of that component
         index : Optional[int]
+            Gives a location in the port array on the component ???
         required : bool
+            Does this port need to be used? ???
         type : ``rill.engine.types.TypeHandler``
+            A TypeHandler that filters data passing through to
+            (only allow/coerce???) to a type. If None, performs no filtering.
         description : Optional[str]
+            A human-readable description of this port.
         """
         assert name is not None
         assert not isinstance(component, str)
@@ -109,6 +116,8 @@ class BasePort(object):
         Returns
         -------
         str
+            The name given to this port, possibly with its index attached.
+            Index is only used for ArrayPorts ???
         """
         name = self._name
         if self.index is not None:
@@ -116,10 +125,11 @@ class BasePort(object):
         return name
 
     def get_full_name(self):
-        """
+        """Get unique name for this port.
         Returns
         -------
         str
+            <Attached component's name>.<Own name>
         """
         return '{}.{}'.format(self.component, self.name)
 
