@@ -1123,3 +1123,6 @@ def serve_runtime(runtime=None, host=DEFAULTS['host'], port=DEFAULTS['port'],
 
     # Start!
     gevent.wait([gevent.spawn(t) for t in tasks])
+
+
+# NOTE: needs an ifmain block to actually run

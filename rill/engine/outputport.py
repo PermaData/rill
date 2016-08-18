@@ -36,11 +36,13 @@ class OutputPort(Port, OutputInterface):
 
     def __init__(self, component, name, **kwargs):
         super(OutputPort, self).__init__(component, name, **kwargs)
+        # _sender_count is how many connections this port passes into.
         self._sender_count = 0
         # type: List[rill.engine.inputport.Connection]
         self._connections = []
 
     def open(self):
+        """Registers this port as open with all associated connections."""
         for connection in self._connections:
             connection._sender_count += 1
         self._sender_count = len(self._connections)
@@ -75,6 +77,7 @@ class OutputPort(Port, OutputInterface):
         return self._sender_count == 0
 
     def is_connected(self):
+        """Returns whether this port is joined to at least one connection."""
         return bool(self._connections)
 
     def is_null(self):
@@ -103,6 +106,7 @@ class OutputPort(Port, OutputInterface):
             packet = self.component.create(packet)
 
         # FIXME: Added this check, but it changes behavior slightly from before:  owner check occurs before is_connected
+        # NOTE: Checks type of data against expected
         self.sender.component.validate_packet(packet)
 
         # if packet is None:
@@ -134,6 +138,7 @@ class OutputPort(Port, OutputInterface):
 
         do_clone = len(self._connections) > 1
         for connection in self._connections:
+            # Send packet along each connection
             p = packet.clone() if do_clone else packet
             if not connection.send(p, self):
                 # FIXME: would be good to check if all outports are closed and
@@ -157,6 +162,7 @@ class OutputPort(Port, OutputInterface):
         Returns
         -------
         int
+            How many packets are queued in all joined connections
         """
         return sum([c.count() for c in self._connections])
 
@@ -211,7 +217,7 @@ import gevent.pool
 
 class ForkedOutputCollection(BaseOutputCollection):
     def send(self, packet):
-        """
+        """Returns whether any of the sends failed
         """
         # get results in parallel
         group = gevent.pool.Group()

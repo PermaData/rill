@@ -145,25 +145,32 @@ class InputPort(Port, InputInterface):
         self._connection = None
 
     def open(self):
+        """Opens the linked connection, as an InitializationConnection if the
+        port was not given a default type??? else as a normal connection."""
         if not self.is_connected() and self.default is not NOT_SET:
             self.initialize(self.default)
         if self.is_connected():
             self._connection.open()
 
     def close(self):
+        """Closes the linked connection."""
         if self.is_connected():
             self._connection.close()
 
     def is_closed(self):
+        """Returns False if the port is linked to a connection that is open."""
         if self.is_connected():
             return self._connection.is_closed()
         else:
             return True
 
     def is_connected(self):
+        """Checks if this port is linked to a connection."""
         return self._connection is not None
 
     def is_initialized(self):
+        """Checks if this port is being initialized instead of having an
+        inter-graph connection."""
         return self.is_connected() and \
                isinstance(self._connection, InitializationConnection)
 
@@ -171,6 +178,7 @@ class InputPort(Port, InputInterface):
         return self.name == IN_NULL
 
     def receive(self):
+        """Tries to take in a packet from the connection's stream."""
         if self.is_connected():
             p = self._connection.receive()
             if p is not None:
@@ -236,6 +244,7 @@ class InputPort(Port, InputInterface):
         Returns
         -------
         int
+            Number of packets in the connection queue.
         """
         if self.is_connected():
             return self._connection.count()
@@ -244,7 +253,8 @@ class InputPort(Port, InputInterface):
 
     def is_drained(self):
         """
-        Returns True if the connection is drained (closed and empty).
+        Returns True if the connection is drained (closed and empty or
+        disconnected).
         """
         return self.is_closed() and self.upstream_count() == 0
 
@@ -260,6 +270,7 @@ class BaseConnection(object):
         Returns
         -------
         ``rill.engine.runner.ComponentRunner``
+            The linked inport's component's associated runner.
         """
         return self.inport.component._runner
 
@@ -269,6 +280,8 @@ class BaseConnection(object):
         Returns
         -------
         ``rill.engine.runner.ComponentRunner``
+            The linked outport's component's associated runner. Does not work
+            when multiple outport connections exist???
         """
         return self.outport.component._runner
 
@@ -459,11 +472,14 @@ class Connection(BaseConnection):
         """
         try:
             self.receiver.trace_locks("sender closed - lock", port=self.inport)
+            # locks the inport while closing the outport
             with self.receiver._lock:
                 # -- synchronized (self):
                 if not self.is_closed():
                     self._sender_count -= 1
 
+                    # should ??? be impossible, as we just checked that this
+                    # connection is not closed
                     if self.is_drained():  # means closed AND empty
                         if self.receiver.status in (StatusValues.DORMANT,
                                                     StatusValues.NOT_STARTED):

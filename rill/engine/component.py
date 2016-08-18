@@ -207,7 +207,8 @@ class Component(object):
 
     def init(self):
         """
-        Override to perform custom initialization.
+        Override to perform custom initialization at the beginning of
+            execution.
         """
         pass
 

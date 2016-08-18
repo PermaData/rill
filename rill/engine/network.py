@@ -36,11 +36,12 @@ def merge_metadata(source_metadata, target_metadata):
     target_metadata.update(source_metadata)
     return target_metadata
 
+
 class Graph(object):
     """
     A graph of ``Components``
-    Consists of all components and the connections between them. Building this
-    graph
+    Consists of all components and the connections between them. Necessary to
+    create a Network.
     """
     def __init__(self, name=None, default_capacity=10, description=None,
                  metadata=None):
@@ -49,6 +50,7 @@ class Graph(object):
         self.metadata = metadata or {}
         self.description = None
 
+        # all these map name: rill-defined object
         # type: OrderedDict[str, rill.engine.component.Component]
         self._components = OrderedDict()
 
@@ -546,7 +548,10 @@ class Graph(object):
         Parameters
         ----------
         content : Any
+            The data to be put in the initialization connection
         receiver : Union[``rill.engine.inputport.InputPort``, str]
+            Either the name of an input port within the graph or the name of
+            the same.
         """
         inport = self.get_component_port(receiver, kind='in')
         inport.initialize(content)
@@ -574,6 +579,8 @@ class Graph(object):
     def validate(self):
         """
         Validate the graph.
+        Walks through every port and run their validate() methods, which mostly
+        check that the proper type of packet is being passed.
         """
         errors = []
         for component in self._components.values():
@@ -656,12 +663,12 @@ class Graph(object):
         ----------
         definition : dict
             network structure according to fbp json standard
-        component_lookup : Dict[str, Type[``rill.enginge.component.Component``]]
+        component_lookup : Dict[str, Type[``rill.engine.component.Component``]]
             maps of component name to component class
 
         Returns
         -------
-        ``rill.enginge.network.Graph``
+        ``rill.engine.network.Graph``
         """
         from rill.utils import locate_class
 
@@ -774,6 +781,7 @@ class Network(object):
                 runner.status = status
 
     def reset(self):
+        """Resets the network to a null state."""
         # freq = 0.5 if self.deadlock_test_interval else None
         # self.cdl = CountDownLatch(len(self._components), freq)
 
@@ -851,6 +859,8 @@ class Network(object):
     def _build_runners(self):
         """
         Populate `self.runners` with a runner for each component.
+        ComponentRunner is a Greenlet subclass that allows event-based
+        operation of individual graph nodes.
         """
         self.runners = []
         for comp in self.graph._components.values():
@@ -954,7 +964,8 @@ class Network(object):
 
     def _test_deadlocks(self):
         """
-        Test the network for deadlocks
+        Test the network for deadlocks every <self.deadlock_test_interval>
+            seconds.
 
         Raises
         ------

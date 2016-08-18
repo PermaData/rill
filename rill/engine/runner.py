@@ -29,7 +29,10 @@ class ComponentRunner(Greenlet):
         Parameters
         ----------
         component : ``rill.engine.component.Component``
+            The component managed by this runner
         parent : ``rill.engine.network.Network``
+            The network where this component is running. Instances of this
+            class are only instantiated by a Network so it will always be set. ???
         """
         Greenlet.__init__(self)
 
