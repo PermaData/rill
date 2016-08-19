@@ -670,6 +670,7 @@ class Graph(object):
         -------
         ``rill.engine.network.Graph``
         """
+        # NOTE: is a classmethod because it needs to exist before instances do
         from rill.utils import locate_class
 
         def _port(p, kind):
@@ -682,6 +683,8 @@ class Graph(object):
             if component_lookup:
                 comp_class = component_lookup[spec['component']]
             else:
+                # Takes a pseudo-path to the component
+                # something like rill/components/math/Add
                 comp_class = locate_class(spec['component'].replace('/', '.'))
             component = graph.add_component(name, comp_class)
             if spec.get('metadata'):

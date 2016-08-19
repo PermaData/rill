@@ -49,6 +49,16 @@ def short_class_name(klass):
 def add_callback(f, callback):
     """
     Wrap the callable ``f`` to first execute callable ``callback``
+
+    Parameters
+    ----------
+    f : Callable
+    callback : Callable
+
+    Returns
+    -------
+    Callable
+        A function that calls the callback and then the original function
     """
     if not hasattr(f, '_callbacks'):
         # undecorated function: decorate it
@@ -71,6 +81,7 @@ def add_callback(f, callback):
 
 
 def expandpath(p):
+    """Make a complete, absolute path out of one that may have references."""
     return os.path.abspath(os.path.expanduser(os.path.expandvars(p)))
 
 
@@ -260,7 +271,7 @@ class Runtime(object):
     """
     Rill runtime for python
     A ``Runtime`` instance holds many ``rill.engine.network.Graph`` instances
-    each running on their own greelent.
+    each running on their own greenlet.
     """
     PROTOCOL_VERSION = '0.5'
 

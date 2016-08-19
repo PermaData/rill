@@ -4,16 +4,23 @@ from rill.compat import *
 
 from typing import Union, Callable, Type
 
-__all__ = ['inport', 'outport', 'must_run', 'self_starting', 'component', 'subnet']
+__all__ = ['inport', 'outport', 'must_run',
+           'self_starting', 'component', 'subnet']
 
 
 class inport(ProxyAnnotation):
+    """Decorator class to make a ``rill.engine.inputport.InputPort`` from a
+    function.
+    """
     multi = True
     attribute = '_inport_definitions'
     proxy_type = InputPortDefinition
 
 
 class outport(ProxyAnnotation):
+    """Decorator class to make a ``rill.engine.outputport.OutputPort from a
+    function.
+    """
     multi = True
     attribute = '_outport_definitions'
     proxy_type = OutputPortDefinition
@@ -48,18 +55,45 @@ ANNOTATIONS = (
 def component(name_or_func=None, **kwargs):
     """
     Decorator to create a component from a function.
+
+    Parameters
+    ----------
+    name_or_func : Union[Callable, str]
+        Given a callable, create a ``rill.engine.component.Component``
+        subclass from it. If given a string, the resultant subclass will have
+        that string as its name.
+    kwargs : Dict[str, Any]
+        Possible keys:
+        pass_context: bool
+            Should instances of the resulting class pass themselves in when
+            called?
+        base_class: ``rill.engine.component.Component``
+            Make the returned class a subclass of base_class instead of the
+            default ``rill.engine.component._FunctionComponent``
+
+    Returns
+    -------
+    Type[``rill.engine.component.Component``]
+        Creates a Component subclass to be instantiated into nodes within a
+        Graph later.
     """
     from rill.engine.component import _FunctionComponent
 
     def decorator(func):
         name_ = name or func.__name__
         attrs = {
+            # The name explicitly given or the function's __name__
             'type_name': name_,
+            # Explained above
             '_pass_context': kwargs.get('pass_context', False),
+            # Set the created class to execute the function
             '_execute': staticmethod(func),
+            # Copy docstring
             '__doc__': getattr(func, '__doc__', None),
+            # Copy location info
             '__module__': func.__module__,
         }
+        # Create class with new attributes
         cls = type(name_,
                    (kwargs.get('base_class', _FunctionComponent),),
                    attrs)
@@ -95,10 +129,15 @@ def subnet(name_or_func):
     Parameters
     ----------
     name_or_func : Union[Callable, str]
+        Given a callable, create a ``rill.engine.subnet.SubGraph`` subclass
+        from it. If given a string, the resultant subclass will have that
+        string as its name.
 
     Returns
     -------
     subnet : Type[``rill.engine.subnet.SubGraph``]
+        Creates a SubGraph subclass that will be instantiated within a Graph
+        later.
     """
     from rill.engine.subnet import SubGraph
 
@@ -108,11 +147,16 @@ def subnet(name_or_func):
 
         name_ = name or func.__name__
         attrs = {
+            # The name explicitly given or the function's __name__
             'name': name_,
+            # Set the created class to use the function to define a subgraph
             'define': classmethod(define),
+            # Copy docstring
             '__doc__': getattr(func, '__doc__', None),
+            # Copy location
             '__module__': func.__module__,
         }
+        # Create class with new attributes
         cls = type(name_, (SubGraph,), attrs)
         # transfer annotations from func to cls
         # FIXME: not sure if all of the annotations make sense for subnets...

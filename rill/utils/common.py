@@ -20,6 +20,7 @@ def importable_class_name(klass, assert_valid=False):
 
 
 def locate_class(class_location):
+    """Given a dotted path to the class, find and return it."""
     # pydoc incorrectly raises ErrorDuringImport when gevent is patched in,
     # so we have to look for the class attribute ourselves.
     import pydoc
