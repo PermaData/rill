@@ -1,0 +1,188 @@
+{
+  "name": "",
+  "measure_method": "na",
+  "deepest_sensor": "na",
+  "permafrost_thickness": "na",
+  "slope": "-999.",
+  "aspect": "-999.",
+  "description": "na",
+  "drilling_method": "na",
+  "depth": "0.0",
+  "gtnp": "",
+  "code": "",
+  "drilling_duration": "na",
+  "permafrost_zone": "",
+  "date_drilled": "na",
+  "prior": "na",
+  "angle": "-999.",
+  "diameter": "-999.",
+  "timezone": "na",
+  "created": "",
+  "modified": "",
+  "country_auth": [],
+  "country": "",
+  "geo": {
+    "longitude": "",
+    "latitude": "",
+    "elevation": "-999."
+  },
+  "observation": {
+    "description": "Soil temperatures at meteorological stations",
+    "vegetation": "na",
+    "hydrology": "na",
+    "landform": "na",
+    "lithology": "na",
+    "morphology": "na",
+    "vegetation_name": "na"
+  },
+  "accessibility": {
+    "type": "na",
+    "distance": "na"
+  },
+  "disturbance": {
+    "type": "na",
+    "type2": "na",
+    "distance": "-999.",
+    "distance2": "-999."
+  },
+  "reference": {
+    "content": "",
+    "created": "2015-04-15 10:00:00",
+    "modified": "2015-04-15 10:00:00"
+  },
+  "seo": {
+    "title": "test form",
+    "keywords": "test",
+    "description": "test"
+  },
+  "contact": {
+    "id": 0,
+    "first_name": "NSIDC",
+    "last_name": "User Services",
+    "role": "na",
+    "position": "na",
+    "address": {
+      "address": "449 UCB",
+      "zip": "80309",
+      "region": "na",
+      "city": "Boulder",
+      "country": "USA",
+      "phone": "(303)492-6199",
+      "fax": "(303)492-2468",
+      "url": "na",
+      "email": "nsidc@nsidc.org"
+    },
+    "organization": {
+      "id": 0,
+      "name": "National Snow and Ice Data Center",
+      "acronym": "NSIDC",
+      "sponsor": "University of Colorado",
+      "address": {
+        "address": "449 UCB",
+        "zip": "80309",
+        "region": "na",
+        "city": "Boulder",
+        "country": "USA",
+        "phone": "(303)492-6199",
+        "fax": "(303)492-2468",
+        "url": "na",
+        "email": "nsidc@nsidc.org"
+      }
+    }
+  },
+  "citation": {
+    "id": 0,
+    "doi": "na",
+    "keywords": "Ground Temperature",
+    "title": "Russian historical soil temperature data",
+    "abstract": "This data set is a collection of monthly and annual average soil temperatures measured at Russian meteorological stations.",
+    "version": 1.0,
+    "md_link": "na",
+    "language": "English",
+    "contact": {
+      "id": 0,
+      "first_name": "Roger",
+      "last_name": "Barry",
+      "role": "na",
+      "position": "na",
+      "address": {
+        "address": "449 UCB",
+        "zip": "80309",
+        "region": "na",
+        "city": "Boulder",
+        "country": "USA",
+        "phone": "(303)492-6199",
+        "fax": "(303)492-2468",
+        "url": "na",
+        "email": "nsidc@nsidc.org"
+      },
+      "organization": {
+        "id": 0,
+        "name": "National Snow and Ice Data Center",
+        "acronym": "NSIDC",
+        "sponsor": "University of Colorado",
+        "address": {
+          "address": "449 UCB",
+          "zip": "80309",
+          "region": "na",
+          "city": "Boulder",
+          "country": "USA",
+          "phone": "(303)492-6199",
+          "fax": "(303)492-2468",
+          "url": "na",
+          "email": "nsidc@nsidc.org"
+        }
+      }
+    },
+    "organization": {
+      "id": 0,
+      "name": "National Snow and Ice Data Center",
+      "acronym": "NSIDC",
+      "sponsor": "University of Colorado",
+      "address": {
+        "address": "449 UCB",
+        "zip": "80309",
+        "region": "na",
+        "city": "Boulder",
+        "country": "USA",
+        "phone": "(303)492-6199",
+        "fax": "(303)492-2468",
+        "url": "na",
+        "email": "nsidc@nsidc.org"
+      }
+    }
+  },
+  "dataset": {
+    "description": "This data set is a collection of monthly and annual average soil temperatures measured at Russian meteorological stations.",
+    "policy": "Open",
+    "quality": "Derived Products",
+    "medium": "Soil",
+    "variable": {
+      "Name": "Ground Temperature",
+      "id": "1"
+    },
+    "unit": {
+      "id": "1",
+      "Name": "Degree Celsius",
+      "Abbreviation": "degC",
+      "Variable_id": "1"
+    },
+    "method": {
+      "id": "7",
+      "Name": "Unknown",
+      "Variable": "Ground Temperature"
+    },
+    "datatype": {
+      "id": "1",
+      "Name": "Average"
+    },
+    "frequency": {
+      "id": "16",
+      "Name": "Monthly"
+    },
+    "country_auth": [
+      "Russia",
+      "United States"
+    ]
+  }
+}

@@ -686,6 +686,8 @@ class Graph(object):
                 # Takes a pseudo-path to the component
                 # something like rill/components/math/Add
                 comp_class = locate_class(spec['component'].replace('/', '.'))
+            print(name)
+            print(comp_class)
             component = graph.add_component(name, comp_class)
             if spec.get('metadata'):
                 component.metadata.update(spec['metadata'])

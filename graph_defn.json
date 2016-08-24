@@ -1,0 +1,92 @@
+{
+  "processes": {
+    "Clean_depths": {
+      "component": "rill/components/DIT_WIDGET/replace_text/replace_text",
+      "metadata": {}
+    },
+    "Convert_depths": {
+      "component": "rill/components/DIT_WIDGET/mult_const/mult_const",
+      "metadata": {}
+    }
+  },
+  "connections": [
+    {
+      "src": {
+        "data": [
+          "C:\\Users\\Nicholas Thurmes\\Documents\\Project Files\\DIT\\AKUL232"
+        ]
+      },
+      "tgt": {
+        "process": "Clean_depths",
+        "port": "infile"
+      }
+    },
+    {
+      "src": {
+        "data": [
+          "C:\\Users\\Nicholas Thurmes\\Documents\\Project Files\\rill-fork\\results\\AKUL232_Clean_depths"
+        ]
+      },
+      "tgt": {
+        "process": "Clean_depths",
+        "port": "outfile"
+      }
+    },
+    {
+      "src": {
+        "data": [
+          "[_CM]"
+        ]
+      },
+      "tgt": {
+        "process": "Clean_depths",
+        "port": "to_replace"
+      }
+    },
+    {
+      "src": {
+        "data": [
+          ""
+        ]
+      },
+      "tgt": {
+        "process": "Clean_depths",
+        "port": "with_replace"
+      }
+    },
+    {
+      "src": {
+        "process": "Clean_depths",
+        "port": "modified"
+      },
+      "tgt": {
+        "process": "Convert_depths",
+        "port": "infile"
+      }
+    },
+    {
+      "src": {
+        "data": [
+          0.01
+        ]
+      },
+      "tgt": {
+        "process": "Convert_depths",
+        "port": "constant"
+      }
+    },
+    {
+      "src": {
+        "data": [
+          "C:\\Users\\Nicholas Thurmes\\Documents\\Project Files\\rill-fork\\results\\AKUL232_Convert_depths"
+        ]
+      },
+      "tgt": {
+        "process": "Convert_depths",
+        "port": "outfile"
+      }
+    }
+  ],
+  "inports": {},
+  "outports": {}
+}
