@@ -133,6 +133,7 @@ class Annotation(object):
         else:
             values = cls.get(obj) or []
         cls.set(obj, values)
+        # NOTE: The order in which you set the decorators is meaningful.
         # we actually prepend because decorators are applied bottom up, which
         # when maintaining order, is not usually intuitive
         values.insert(0, value)
@@ -168,4 +169,3 @@ class FlagAnnotation(Annotation):
         """
         cls.set(obj, True)
         return obj
-

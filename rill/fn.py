@@ -32,7 +32,7 @@ def current_component_runner():
 
 def current_component():
     """
-    Get the active Component Runner
+    Get the active Component from within the current Runner
 
     Returns
     -------

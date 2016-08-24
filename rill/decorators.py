@@ -18,7 +18,7 @@ class inport(ProxyAnnotation):
 
 
 class outport(ProxyAnnotation):
-    """Decorator class to make a ``rill.engine.outputport.OutputPort from a
+    """Decorator class to make a ``rill.engine.outputport.OutputPort`` from a
     function.
     """
     multi = True
