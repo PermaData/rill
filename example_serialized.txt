@@ -1,0 +1,45 @@
+{
+    'processes': {
+        'LineToWords': {
+            'component': 'rill.components.hello_world/LineToWords',
+            'metadata': {
+            }
+        },
+        'StartsWith': {
+            'component': 'rill.components.hello_world/StartsWith',
+            'metadata': {}
+        },
+        'WordsToLine': {
+            'component': 'rill.components.hello_world/WordsToLine',
+            'metadata': {}
+        },
+        'Output': {
+            'component': 'rill.components.hello_world/Output',
+            'metadata': {}
+        },
+    },
+    'connections': [
+        {
+            'src': {'data': 'HeLLo Goodbye World'},
+            'tgt': {'process': 'LineToWords', 'port': 'IN'}
+        },
+        {
+            'src': {'data': 'G'},
+            'tgt': {'process': 'StartsWith', 'port': 'TEST'}
+        },
+        {
+            'src': {'process': 'LineToWords', 'port': 'OUT'},
+            'tgt': {'process': 'StartsWith', 'port': 'IN'}
+        },
+        {
+            'src': {'process': 'StartsWith', 'port': 'REJ'},
+            'tgt': {'process': 'WordsToLine', 'port': 'IN'}
+        },
+        {
+            'src': {'process': 'WordsToLine', 'port': 'OUT'},
+            'tgt': {'process': 'Output', 'port': 'IN'}
+        }
+    ],
+    'inports': {},
+    'outports': {}
+}
