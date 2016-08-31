@@ -2,6 +2,7 @@
 """Multiplies all numeric values in a column file by a constant."""
 import sys
 import getopt
+import csv
 
 import rill
 
@@ -13,16 +14,30 @@ __all__ = ['mult_const']
 @rill.component
 @rill.inport('infile')
 @rill.inport('outfile')
+@rill.inport('indices')
 @rill.inport('constant')
 @rill.outport('modified')
-def mult_const(infile, outfile, constant, modified):
+def mult_const(infile, outfile, indices, constant, modified):
     # Multiplies all values in infile by constant and writes the result
     # to outfile.
     infile_ = infile.receive_once()
     outfile_ = outfile.receive_once()
     constant_ = constant.receive_once()
-    a.arithmetic(infile_, outfile_, constant_, lambda x, y: x*y,
-                 lambda x, y: False)
+    # indices_ = indices.receive_once()
+    with open(infile_) as f, open(outfile_, 'w', newline='') as out:
+        data = csv.reader(f)
+        output = csv.writer(out)
+        for row in data:
+            for i in indices.iter_contents():
+                try:
+                    val = float(row[i])
+                except ValueError:
+                    continue  # Skip this line, it's probably a header
+                if (val != -999):
+                    row[i] = val * constant_
+            output.writerow(row)
+    # a.arithmetic(infile_, outfile_, constant_, lambda x, y: x*y,
+    #              lambda x, y: False)
     modified.send(outfile_)
 
 

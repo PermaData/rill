@@ -8,7 +8,11 @@ from .common import definitions as d
 __all__ = ['remove_chars']
 
 
-def remove_chars(infile, outfile, chars, substring=False, placeholder=''):
+@rill.component
+@rill.inport('infile')
+@rill.inport('outfile')
+@rill.inport('chars')
+def remove_chars(infile, outfile, chars, modified, substring=False, placeholder=''):
     """Remove all from a set of characters from a column.
 
     Input:

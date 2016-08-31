@@ -6,7 +6,12 @@ import itertools
 import os
 
 
-def break_columns(datafile, ignored, header=True, name_override=None):
+@rill.component
+@rill.inport('datafile')
+@rill.outport('outfiles')
+@rill.inport('header')
+@rill.inport('name_override')
+def break_columns(datafile, outfiles, header, name_override):
     """
     Inputs:
         datafile: The name of a csv file that is to be read.

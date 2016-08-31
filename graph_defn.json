@@ -77,6 +77,15 @@
     },
     {
       "src": {
+        "data": [3]
+      },
+      "tgt": {
+        "process": "Convert_depths",
+        "port": "indices"
+      }
+    },
+    {
+      "src": {
         "data": [
           "C:\\Users\\Nicholas Thurmes\\Documents\\Project Files\\rill-fork\\results\\AKUL232_Convert_depths"
         ]
