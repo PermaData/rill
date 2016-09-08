@@ -1,0 +1,166 @@
+{
+  "processes": {
+    "Extract_first": {
+      "component": "rill/components/DIT_WIDGET/column_extract/column_extract",
+      "metadata": {}
+    },
+    "Replace_first": {
+      "component": "rill/components/DIT_WIDGET/column_replace/column_replace",
+      "metadata": {}
+    },
+    "Clean_depths": {
+      "component": "rill/components/DIT_WIDGET/remove_chars/remove_chars",
+      "metadata": {}
+    },
+    "Extract_second": {
+      "component": "rill/components/DIT_WIDGET/column_extract/column_extract",
+      "metadata": {}
+    }
+  },
+  "connections": [
+    {
+      "src": {
+        "data": ["AKUL232"]
+      },
+      "tgt": {
+        "process": "Extract_first",
+        "port": "base_csv"
+      }
+    },
+    {
+      "src": {
+        "data": [{"Station": 0, "date:time": 1, "Depth": 2, "Quality Code": 3, "Temperature": 4}]
+      },
+      "tgt": {
+        "process": "Extract_first",
+        "port": "base_map"
+      }
+    },
+    {
+      "src": {
+        "data": [["Depth"]]
+      },
+      "tgt": {
+        "process": "Extract_first",
+        "port": "desired_names"
+      }
+    },
+    {
+      "src": {
+        "data": ["DEMO"]
+      },
+      "tgt": {
+        "process": "Extract_first",
+        "port": "flowID"
+      }
+    },
+
+    {
+      "src": {
+        "process": "Extract_first",
+        "port": "temp_file_in"
+      },
+      "tgt": {
+        "process": "Clean_depths",
+        "port": "infile"
+      }
+    },
+    {
+      "src": {
+        "process": "Extract_first",
+        "port": "temp_file_out"
+      },
+      "tgt": {
+        "process": "Clean_depths",
+        "port": "outfile"
+      }
+    },
+    {
+      "src": {
+        "data": ["'_CMAB"]
+      },
+      "tgt": {
+        "process": "Clean_depths",
+        "port": "chars"
+      }
+    },
+
+    {
+      "src": {
+        "process": "Extract_first",
+        "port": "temp_map"
+      },
+      "tgt": {
+        "process": "Replace_first",
+        "port": "temp_map"
+      }
+    },
+    {
+      "src": {
+        "process": "Extract_first",
+        "port": "temp_file_out"
+      },
+      "tgt": {
+        "process": "Replace_first",
+        "port": "temp_csv"
+      }
+    },
+    {
+      "src": {
+        "data": ["DEMO_In_AKUL232.csv"]
+      },
+      "tgt": {
+        "process": "Replace_first",
+        "port": "base_csv"
+      }
+    },
+    {
+      "src": {
+        "data": [{"Station": 0, "date:time": 1, "Depth": 2, "Quality Code": 3, "Temperature": 4}]
+      },
+      "tgt": {
+        "process": "Replace_first",
+        "port": "base_map"
+      }
+    },
+
+    {
+      "src": {
+        "data": ["temp"]
+      },
+      "tgt": {
+        "process": "Extract_second",
+        "port": "base_csv"
+      }
+    },
+    {
+      "src": {
+        "data": [{"Station": 0, "date:time": 1, "Depth": 2, "Quality Code": 3, "Temperature": 4}]
+      },
+      "tgt": {
+        "process": "Extract_second",
+        "port": "base_map"
+      }
+    },
+    {
+      "src": {
+        "data": [["Depth"]]
+      },
+      "tgt": {
+        "process": "Extract_second",
+        "port": "desired_names"
+      }
+    },
+    {
+      "src": {
+        "data": ["DEMO"]
+      },
+      "tgt": {
+        "process": "Extract_second",
+        "port": "flowID"
+      }
+    }
+  ],
+  "inports": {},
+  "outports": {}
+}

@@ -330,7 +330,7 @@ class SupportsListeners(object):
 
     def __get__(self, instance, owner):
         if not self.registry.get(instance, False):
-            method = types.MethodType(self.method, instance, owner)
+            method = types.MethodType(self.method, instance)
             self.registry[instance] = listener = MethodProxy(method)
         else:
             listener = self.registry[instance]

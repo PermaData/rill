@@ -4,7 +4,7 @@ from abc import ABCMeta, abstractmethod
 import inspect
 import collections
 from collections import defaultdict
-from types import NoneType
+# from types import NoneType
 
 import schematics.types
 import schematics.models
@@ -406,7 +406,7 @@ def deserialize(data):
             return handler.to_native(data['value'])
         else:
             newobj = collections.OrderedDict()
-            for key, value in data.iteritems():
+            for key, value in data.items():
                 newobj[key] = deserialize(value)
             return newobj
     elif type(data) in (list, tuple):
