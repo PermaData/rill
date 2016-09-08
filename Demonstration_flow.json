@@ -15,6 +15,10 @@
     "Extract_second": {
       "component": "rill/components/DIT_WIDGET/column_extract/column_extract",
       "metadata": {}
+    },
+    "Convert_depths": {
+      "component": "rill/components/DIT_WIDGET/div_const/div_const",
+      "metadata": {}
     }
   },
   "connections": [
@@ -107,7 +111,7 @@
     },
     {
       "src": {
-        "data": ["DEMO_In_AKUL232.csv"]
+        "data": ["AKUL232"]
       },
       "tgt": {
         "process": "Replace_first",
@@ -158,6 +162,36 @@
       "tgt": {
         "process": "Extract_second",
         "port": "flowID"
+      }
+    },
+
+    {
+      "src": {
+        "process": "Extract_second",
+        "port": "temp_file_in"
+      },
+      "tgt": {
+        "process": "Convert_depths",
+        "port": "infile"
+      }
+    },
+    {
+      "src": {
+        "process": "Extract_second",
+        "port": "temp_file_out"
+      },
+      "tgt": {
+        "process": "Convert_depths",
+        "port": "outfile"
+      }
+    },
+    {
+      "src": {
+        "data": [100]
+      },
+      "tgt": {
+        "process": "Convert_depths",
+        "port": "constant"
       }
     }
   ],
