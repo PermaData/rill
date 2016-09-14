@@ -1,7 +1,11 @@
 import rill
 
 
-def file_manager(filenames, current):
+@rill.component
+@rill.inport('filenames')
+@rill.outport('current')
+@rill.outport('FID')
+def file_manager(filenames, current, FID):
     """
     takes in a collection of file names through that port
     does some preprocessing? at least verify that the file exists
@@ -16,3 +20,14 @@ def file_manager(filenames, current):
         except FileNotFoundError:
             drop severity to a warning and don't pass the file on
     """
+    for name in filenames.iter_contents():
+        identifier = 1
+        try:
+            f = open(name)
+            f.close()
+            current.send(name)
+            FID.send(identifier)
+            identifier += 1
+        except FileNotFoundError:
+            # TODO: Make this send to some log instead of the console
+            print('The file {f} was not found.'.format(f=name))
