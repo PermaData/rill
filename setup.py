@@ -70,7 +70,8 @@ setup(
     long_description=open('README.md').read(),
 
     url='https://github.com/chadrik/rill',
-    packages=['rill', 'rill.components', 'rill.engine'],
+    #packages=['rill', 'rill.components', 'rill.engine'],
+    packages=find_packages(exclude=['tests']),
     license='MIT',
     classifiers=[
         'Intended Audience :: Developers'
