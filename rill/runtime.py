@@ -723,13 +723,13 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
 
     def on_open(self):
         self.client_id = uuid.uuid4()
-        print 'connected: {}'.format(str(self.client_id))
+        print('connected: {}'.format(str(self.client_id)))
         clients[self.client_id] = self
         self.logger.info("Connection opened")
 
     def on_close(self, reason):
         del clients[self.client_id]
-        print 'disconnected: {}'.format(str(self.client_id))
+        print('disconnected: {}'.format(str(self.client_id)))
         self.client_id = None
         self.logger.info("Connection closed. Reason: {}".format(reason))
 
@@ -1028,7 +1028,7 @@ class WebSocketRuntimeApplication(geventwebsocket.WebSocketApplication):
         # acknowledgement
         if send_ack:
             self.send('graph', command, payload)
-            print "CLIENTS: {}".format(len(clients.items()))
+            print("CLIENTS: {}".format(len(clients.items())))
             for client_id, client in clients.items():
                 if client_id != self.client_id:
                     client.send('graph', command, payload, message_id)
